@@ -1,6 +1,6 @@
 # 셔틀 트래커 프로젝트 진행 상황
 
-## 📅 작업 일자: 2025-09-04 (마지막 업데이트)
+## 📅 작업 일자: 2025-09-19 (마지막 업데이트)
 
 ## ✅ 완료된 작업
 
@@ -73,6 +73,27 @@
   - 위젯 UI 테스트 업데이트 (6개)
   - 총 16개 테스트 모두 통과 ✅
 
+### 7. 네이버 지도 연동 및 모바일 최적화 (Phase 1-2) - 진행중
+- [x] **네이버 지도 API 설정 및 연동**
+  - [x] Naver Cloud Platform Maps API 발급
+  - [x] flutter_naver_map 패키지 설치 (v1.4.1+1)
+  - [x] Android 패키지명 매칭 (`com.bmy4415.shuttle_tracker`)
+  - [x] iOS Bundle ID 매칭 (`com.bmy4415.shuttleTracker`)
+  - [x] API 키 인증 문제 해결 완료
+- [x] **모바일 앱 최적화**
+  - [x] 웹 관련 코드 완전 제거 (모바일 전용 집중)
+  - [x] Android 위치 권한 설정 (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`)
+  - [x] Android manifest에 Naver Maps API 키 설정
+  - [x] 갤럭시 Note 20 Ultra에서 실제 테스트 완료
+- [x] **기본 지도 표시**
+  - [x] 네이버 지도 정상 렌더링 확인 (Android)
+  - [x] 학부모 화면에서 마커 표시 확인
+- [ ] **위치 기능 검증 필요**
+  - [ ] 마커가 실제 버스 위치를 표시하는지 확인
+  - [ ] 학부모 위치 공유 실제 동작 확인
+  - [ ] 기사 화면에서 학부모 위치 표시 확인
+  - [ ] 실시간 위치 업데이트 동작 확인
+
 ## 🚀 앞으로 해야 할 작업
 
 ### Phase 1: 핵심 기능 구현 (MVP)
@@ -89,13 +110,15 @@
 - 백그라운드 위치 추적은 브라우저 환경의 보안 제한으로 인해 실제 모바일 기기에서만 테스트 가능
 - 현재 구현된 기능으로도 기본적인 위치 추적 시스템은 완전히 동작함
 
-#### 2. 지도 통합
-- [ ] Google Maps Flutter 패키지 설치
-- [ ] 학부모 앱: 지도 뷰 구현
-  - [ ] 지도 표시
-  - [ ] 버스 위치 마커
-  - [ ] 실시간 위치 업데이트
-- [ ] 네이버 지도 대안 검토 (한국 최적화)
+#### 2. 지도 통합 🔄 (50% 완료)
+- [x] 네이버 지도 Flutter 패키지 설치 및 설정
+- [x] 학부모 앱: 기본 지도 뷰 구현
+  - [x] 네이버 지도 표시 (Android 확인)
+  - [x] 기본 마커 표시 확인
+  - [ ] 버스 위치 마커 정확성 검증 필요
+  - [ ] 실시간 위치 업데이트 검증 필요
+  - [ ] 학부모 위치 공유 검증 필요
+- [x] 네이버 지도 API 기본 연동 (한국 최적화)
 
 #### 3. Firebase 백엔드 구축
 - [ ] Firebase 프로젝트 생성
@@ -151,13 +174,14 @@
 ### 현재 사용 중
 - **Frontend**: Flutter 3.35.2
 - **Language**: Dart 3.9.0
+- **Maps**: 네이버 지도 (flutter_naver_map v1.4.1+1)
+- **Location**: Geolocator v14.0.2
+- **Environment**: flutter_dotenv v6.0.0
 - **Test**: flutter_test
 - **Version Control**: Git
 
 ### 예정
-- **Maps**: Google Maps Flutter (또는 네이버 지도)
 - **Backend**: Firebase (Firestore, Auth, FCM, Hosting)
-- **Location**: Geolocator
 - **State Management**: Provider 또는 Riverpod
 
 ## 📝 참고 사항
@@ -176,4 +200,4 @@
 
 ---
 
-*마지막 업데이트: 2025-09-04 24:13 - 위치 추적 기능 구현 완료*
+*마지막 업데이트: 2025-09-19 21:35 - 네이버 지도 연동 및 모바일 앱 최적화 완료*
