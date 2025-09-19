@@ -1,8 +1,33 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'services/location_service.dart';
+import 'services/parent_location_service.dart';
 import 'models/location_data.dart';
+import 'models/parent_data.dart';
+import 'widgets/naver_map_widget.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 환경 변수 로드
+  await dotenv.load(fileName: ".env");
+  
+  // 네이버 지도 초기화 (모바일에서만)
+  if (!kIsWeb) {
+    final clientId = dotenv.env['NAVER_MAPS_CLIENT_ID'];
+    if (clientId != null && clientId != 'your_client_id_here') {
+      await FlutterNaverMap().init(
+        clientId: clientId,
+        onAuthFailed: (ex) {
+          print('Naver Map 인증 실패: ${ex.toString()}');
+        },
+      );
+    }
+  }
+  
   runApp(const ShuttleTrackerApp());
 }
 
@@ -85,8 +110,194 @@ class RoleSelectorScreen extends StatelessWidget {
   }
 }
 
-class ParentHomeScreen extends StatelessWidget {
+class ParentHomeScreen extends StatefulWidget {
   const ParentHomeScreen({super.key});
+
+  @override
+  State<ParentHomeScreen> createState() => _ParentHomeScreenState();
+}
+
+class _ParentHomeScreenState extends State<ParentHomeScreen> {
+  // GoogleMapController? _mapController; // 임시 주석 처리
+  // final Set<Marker> _markers = {}; // 임시 주석 처리
+  LocationData? _busLocation;
+  bool _isLoadingLocation = false;
+  bool _isSharingLocation = false;
+  bool _isWaitingForPickup = false;
+  
+  // 학부모 정보 (실제로는 로그인 정보에서 가져옴)
+  final String _parentName = '김엄마';
+  final String _childName = '김민수';
+
+  // 서울시청 좌표 (기본 지도 중심)
+  // static const CameraPosition _initialPosition = CameraPosition( // 임시 주석 처리
+  //   target: LatLng(37.5665, 126.9780),
+  //   zoom: 14.0,
+  // );
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBusLocation();
+    _startAutoLocationSharing(); // 앱 시작과 함께 자동 위치 공유 시작
+  }
+
+  // 자동 위치 공유 시작
+  Future<void> _startAutoLocationSharing() async {
+    try {
+      await ParentLocationService().updateParentLocation(
+        parentName: _parentName,
+        childName: _childName,
+        isWaitingForPickup: false,
+      );
+      
+      setState(() {
+        _isSharingLocation = true;
+      });
+      
+      // 10초마다 위치 업데이트
+      Timer.periodic(const Duration(seconds: 10), (timer) async {
+        if (_isSharingLocation && mounted) {
+          try {
+            await ParentLocationService().updateParentLocation(
+              parentName: _parentName,
+              childName: _childName,
+              isWaitingForPickup: _isWaitingForPickup,
+            );
+          } catch (e) {
+            print('자동 위치 업데이트 실패: $e');
+          }
+        } else {
+          timer.cancel();
+        }
+      });
+      
+    } catch (e) {
+      print('자동 위치 공유 시작 실패: $e');
+      // 실패해도 사용자에게는 알리지 않음 (자동이므로)
+    }
+  }
+
+  Future<void> _loadBusLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    // 실제로는 서버에서 버스 위치를 가져오지만, 
+    // 지금은 LocationService로 시뮬레이션
+    final locationService = LocationService();
+    
+    try {
+      final location = await locationService.getCurrentLocation(
+        busId: 'BUS001',
+        driverId: 'DRIVER001',
+      );
+
+      if (location != null) {
+        setState(() {
+          _busLocation = location;
+          // _updateBusMarker(location); // 임시 주석 처리
+        });
+
+        // 지도 카메라를 버스 위치로 이동
+        // if (_mapController != null) { // 임시 주석 처리
+        //   _mapController!.animateCamera(
+        //     CameraUpdate.newLatLng(
+        //       LatLng(location.latitude, location.longitude),
+        //     ),
+        //   );
+        // }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('위치를 가져올 수 없습니다: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+    }
+  }
+
+  // void _updateBusMarker(LocationData location) { // 임시 주석 처리
+  //   final marker = Marker(
+  //     markerId: const MarkerId('bus'),
+  //     position: LatLng(location.latitude, location.longitude),
+  //     icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+  //     infoWindow: InfoWindow(
+  //       title: '셔틀버스',
+  //       snippet: '버스 ID: ${location.busId}\n시간: ${location.timestamp.toString().substring(11, 19)}',
+  //     ),
+  //   );
+
+  //   setState(() {
+  //     _markers.clear();
+  //     _markers.add(marker);
+  //   });
+  // }
+
+  // 학부모 위치 공유 시작/중지
+  Future<void> _toggleLocationSharing() async {
+    if (_isSharingLocation) {
+      setState(() {
+        _isSharingLocation = false;
+        _isWaitingForPickup = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('위치 공유를 중지했습니다')),
+      );
+    } else {
+      try {
+        await ParentLocationService().updateParentLocation(
+          parentName: _parentName,
+          childName: _childName,
+          isWaitingForPickup: _isWaitingForPickup,
+        );
+        setState(() {
+          _isSharingLocation = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('위치 공유를 시작했습니다')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('위치 공유 실패: $e')),
+        );
+      }
+    }
+  }
+
+  // 픽업 대기 상태 토글
+  Future<void> _toggleWaitingStatus() async {
+    if (!_isSharingLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('먼저 위치 공유를 활성화하세요')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isWaitingForPickup = !_isWaitingForPickup;
+    });
+
+    try {
+      await ParentLocationService().updateParentLocation(
+        parentName: _parentName,
+        childName: _childName,
+        isWaitingForPickup: _isWaitingForPickup,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isWaitingForPickup ? '픽업 대기 중입니다' : '픽업 대기를 해제했습니다'),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('상태 변경 실패: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,33 +305,183 @@ class ParentHomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('학부모 화면'),
         backgroundColor: Colors.blue.shade100,
+        actions: [
+          IconButton(
+            onPressed: _isLoadingLocation ? null : _loadBusLocation,
+            icon: _isLoadingLocation 
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+          ),
+        ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.map,
-              size: 100,
-              color: Colors.blue,
+      body: Stack(
+        children: [
+          // 네이버 지도 (플랫폼별 렌더링)
+          Positioned.fill(
+            child: kIsWeb 
+              ? NaverMapWidget(
+                  busLocation: _busLocation,
+                )
+              : NaverMapWidget(
+                  busLocation: _busLocation,
+                ),
+          ),
+          
+          // 학부모 위치 공유 컨트롤 (지도 위에 오버레이)
+          Positioned(
+            bottom: 20,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person_pin_circle, color: Colors.green.shade600),
+                      const SizedBox(width: 8),
+                      Text(
+                        '나의 위치 공유',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$_parentName ($_childName)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // 버튼들을 행으로 배치
+                  Row(
+                    children: [
+                      // 위치 공유 토글 버튼
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _toggleLocationSharing,
+                          icon: Icon(
+                            _isSharingLocation ? Icons.location_off : Icons.location_on,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _isSharingLocation ? '공유 중지' : '공유 시작',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isSharingLocation ? Colors.red : Colors.green,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(width: 8),
+                      
+                      // 픽업 대기 버튼
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isSharingLocation ? _toggleWaitingStatus : null,
+                          icon: Icon(
+                            _isWaitingForPickup ? Icons.cancel : Icons.front_hand,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _isWaitingForPickup ? '대기 해제' : '픽업 요청',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isWaitingForPickup ? Colors.orange : Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  if (_isWaitingForPickup)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '🚌 기사님이 확인할 수 있도록 픽업 대기 중입니다',
+                        style: TextStyle(
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 11,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              '버스 위치가 여기에 표시됩니다',
-              style: TextStyle(fontSize: 18),
+          ),
+            
+          // 로딩 인디케이터
+          if (_isLoadingLocation)
+            Positioned(
+              bottom: 100,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text(
+                        '버스 위치 확인 중...',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 40),
-            ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('지도 기능 준비 중')),
-                );
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('위치 새로고침'),
-            ),
-          ],
-        ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _isLoadingLocation ? null : _loadBusLocation,
+        child: const Icon(Icons.my_location),
+        tooltip: '버스 위치 새로고침',
       ),
     );
   }
@@ -136,11 +497,16 @@ class DriverHomeScreen extends StatefulWidget {
 class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProviderStateMixin {
   bool _isTracking = false;
   final LocationService _locationService = LocationService();
+  final ParentLocationService _parentLocationService = ParentLocationService();
   LocationData? _currentLocation;
   String? _statusMessage;
   bool _isLoadingLocation = false;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
+  
+  // 학부모 위치 추적 관련
+  List<ParentData> _parentLocations = [];
+  bool _isTrackingParents = false;
 
   @override
   void initState() {
@@ -152,20 +518,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
     _progressAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
     );
+    
+    // 학부모 위치 스트림 리스너 설정
+    _parentLocationService.parentLocationStream.listen((parents) {
+      if (mounted) {
+        setState(() {
+          _parentLocations = parents;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _progressController.dispose();
     _locationService.dispose();
+    _parentLocationService.dispose();
     super.dispose();
   }
 
   Future<void> _toggleTracking() async {
     if (_isTracking) {
       _locationService.stopLocationTracking();
+      _parentLocationService.stopTrackingParents(); // 학부모 위치 추적도 중지
       setState(() {
         _isTracking = false;
+        _isTrackingParents = false;
         _statusMessage = '위치 전송 중지됨';
       });
     } else {
@@ -179,6 +557,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
       );
 
       if (started) {
+        // 학부모 위치 추적도 시작
+        _parentLocationService.startTrackingParents();
+        setState(() {
+          _isTrackingParents = true;
+        });
+        
         _locationService.locationStream.listen((LocationData location) {
           setState(() {
             _currentLocation = location;
@@ -247,10 +631,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
         title: const Text('기사 화면'),
         backgroundColor: Colors.green.shade100,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+      body: SingleChildScrollView(
+        child: Container(
+          constraints: BoxConstraints(
+            minHeight: MediaQuery.of(context).size.height - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
             Icon(
               _isTracking ? Icons.location_on : Icons.location_off,
               size: 100,
@@ -419,7 +807,137 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
                 minimumSize: const Size(200, 50),
               ),
             ),
-          ],
+            
+            // 학부모 위치 지도 표시
+            if (_isTrackingParents) ...[
+              const SizedBox(height: 20),
+              Container(
+                height: 300,
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: kIsWeb 
+                    ? NaverMapWidget(
+                        busLocation: _currentLocation,
+                        parentLocations: _parentLocations,
+                        showParentLocations: true,
+                      )
+                    : NaverMapWidget(
+                        busLocation: _currentLocation,
+                        parentLocations: _parentLocations,
+                        showParentLocations: true,
+                      ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // 학부모 목록 (간단한 리스트)
+              if (_parentLocations.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.purple.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.family_restroom, color: Colors.purple.shade600, size: 16),
+                          const SizedBox(width: 6),
+                          Text(
+                            '학부모 위치 (${_parentLocations.length}명)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // 간단한 학부모 목록
+                      ...(_parentLocations.map((parent) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Icon(
+                              parent.isWaitingForPickup ? Icons.front_hand : Icons.person_pin_circle,
+                              color: parent.isWaitingForPickup ? Colors.orange.shade600 : Colors.blue.shade600,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${parent.parentName} (${parent.childName})',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: parent.isWaitingForPickup ? FontWeight.bold : FontWeight.normal,
+                                  color: parent.isWaitingForPickup ? Colors.orange.shade800 : Colors.black87,
+                                ),
+                              ),
+                            ),
+                            if (parent.isWaitingForPickup)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '픽업 대기',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade800,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      )).toList()),
+                    ],
+                  ),
+                ),
+            ],
+            
+            // 학부모 위치 추적 상태 메시지
+            if (_isTrackingParents && _parentLocations.isEmpty) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Text(
+                  '📱 학부모들의 위치 공유를 기다리고 있습니다...',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              ],
+            ],
+          ),
         ),
       ),
     );
