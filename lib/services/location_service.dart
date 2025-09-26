@@ -44,6 +44,7 @@ class LocationService {
     return true;
   }
 
+
   /// Get current location once
   Future<LocationData?> getCurrentLocation({
     required String busId,
@@ -57,8 +58,9 @@ class LocationService {
 
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium, // high → medium 변경 (더 빠름)
+          accuracy: LocationAccuracy.low, // 속도 최적화
           distanceFilter: 0,
+          timeLimit: Duration(seconds: 5), // 5초 제한
         ),
       );
 
@@ -97,8 +99,9 @@ class LocationService {
       _locationController ??= StreamController<LocationData>.broadcast();
 
       const LocationSettings locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // Update when moved at least 10 meters
+        accuracy: LocationAccuracy.low, // 속도 최적화
+        distanceFilter: 10, // 10m 이동 시 업데이트 (low accuracy에 맞게 조정)
+        timeLimit: Duration(seconds: 10), // 10초 제한
       );
 
       _locationSubscription = Geolocator.getPositionStream(

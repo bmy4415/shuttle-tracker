@@ -45,6 +45,28 @@ class LocationData {
     );
   }
 
+  LocationData copyWith({
+    double? latitude,
+    double? longitude,
+    double? accuracy,
+    double? altitude,
+    double? speed,
+    DateTime? timestamp,
+    String? busId,
+    String? driverId,
+  }) {
+    return LocationData(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      accuracy: accuracy ?? this.accuracy,
+      altitude: altitude ?? this.altitude,
+      speed: speed ?? this.speed,
+      timestamp: timestamp ?? this.timestamp,
+      busId: busId ?? this.busId,
+      driverId: driverId ?? this.driverId,
+    );
+  }
+
   @override
   String toString() {
     return 'LocationData(lat: $latitude, lng: $longitude, timestamp: $timestamp, busId: $busId)';
