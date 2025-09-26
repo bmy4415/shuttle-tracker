@@ -40,6 +40,10 @@ flutter run -d chrome        # 웹 브라우저 실행
 flutter run -d macos         # macOS 앱 실행
 flutter test                 # 테스트 실행
 
+# Hot Restart (Flutter 앱 실행 중)
+R                            # Hot Restart (앱 완전 재시작, 상태 초기화)
+q                            # 앱 종료
+
 # 빌드
 flutter build web           # PWA 빌드
 flutter build apk           # Android APK
@@ -63,7 +67,19 @@ flutter pub get             # 의존성 설치
 3. **작업 완료**
    - `PROJECT_STATUS.md` 업데이트 (완료 작업 체크, 다음 작업 계획)
    - 의미 있는 기능 완성 시 커밋
+   - **자동 Hot Restart**: 작업 완료 후 반드시 `R` (Hot Restart) 실행
    - **중요**: 커밋할 때마다 `PROJECT_STATUS.md`도 함께 커밋하기
+
+## 개발 및 디버깅
+
+### Hot Restart 규칙
+- **작업 완료 후 필수**: 모든 기능 구현 완료 시 `R` (Hot Restart) 실행
+- **디버그 팝업**: 앱 시작시 타임스탬프 팝업으로 리스타트 확인
+- **배포시 정리**: `TODO: 배포시 삭제` 주석이 있는 디버그 코드 제거
+
+### 팝업 확인
+- 앱 시작시 "🔥 Hot Restart 완료" 팝업이 뜨면 정상 작동
+- 팝업에 표시된 시간으로 리스타트 시점 확인 가능
 
 ## 보안 및 주의사항
 

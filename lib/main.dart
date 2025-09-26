@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'services/location_service.dart';
 import 'services/parent_location_service.dart';
+import 'services/auto_location_simulator.dart';
 import 'models/location_data.dart';
 import 'models/parent_data.dart';
 import 'widgets/naver_map_widget.dart';
@@ -47,8 +48,57 @@ class ShuttleTrackerApp extends StatelessWidget {
   }
 }
 
-class RoleSelectorScreen extends StatelessWidget {
+class RoleSelectorScreen extends StatefulWidget {
   const RoleSelectorScreen({super.key});
+
+  @override
+  State<RoleSelectorScreen> createState() => _RoleSelectorScreenState();
+}
+
+class _RoleSelectorScreenState extends State<RoleSelectorScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    // TODO: 배포시 삭제 - 개발용 앱 시작시간 팝업
+    _showStartupTimestamp();
+  }
+
+  // TODO: 배포시 삭제 - 개발용 Hot Restart 확인 팝업
+  void _showStartupTimestamp() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final startTime = DateTime.now();
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('🔥 Hot Restart 완료'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('앱 시작시간:'),
+                const SizedBox(height: 8),
+                Text(
+                  '${startTime.toString().substring(0, 19)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('확인'),
+              ),
+            ],
+          );
+        },
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,186 +168,310 @@ class ParentHomeScreen extends StatefulWidget {
 }
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
-  // GoogleMapController? _mapController; // 임시 주석 처리
-  // final Set<Marker> _markers = {}; // 임시 주석 처리
   LocationData? _busLocation;
+  LocationData? _myLocation; // 학부모 본인의 위치
   bool _isLoadingLocation = false;
-  bool _isSharingLocation = false;
-  bool _isWaitingForPickup = false;
-  
+
   // 학부모 정보 (실제로는 로그인 정보에서 가져옴)
   final String _parentName = '김엄마';
   final String _childName = '김민수';
 
-  // 서울시청 좌표 (기본 지도 중심)
-  // static const CameraPosition _initialPosition = CameraPosition( // 임시 주석 처리
-  //   target: LatLng(37.5665, 126.9780),
-  //   zoom: 14.0,
-  // );
+  // Stream subscriptions
+  StreamSubscription<LocationData>? _myLocationSubscription;
+  StreamSubscription<LocationData>? _busLocationSubscription;
+
+  // Services
+  final LocationService _locationService = LocationService();
+  final AutoLocationSimulator _simulator = AutoLocationSimulator();
+
+  // Map controller for camera movement
+  NaverMapController? _mapController;
+
+  // Button state management
+  bool _isMovingToMyLocation = false;
+  bool _isMovingToBusLocation = false;
 
   @override
   void initState() {
     super.initState();
-    _loadBusLocation();
-    _startAutoLocationSharing(); // 앱 시작과 함께 자동 위치 공유 시작
+    _startRealTimeLocationTracking();
   }
 
-  // 자동 위치 공유 시작
-  Future<void> _startAutoLocationSharing() async {
-    try {
-      await ParentLocationService().updateParentLocation(
-        parentName: _parentName,
-        childName: _childName,
-        isWaitingForPickup: false,
-      );
-      
-      setState(() {
-        _isSharingLocation = true;
-      });
-      
-      // 10초마다 위치 업데이트
-      Timer.periodic(const Duration(seconds: 10), (timer) async {
-        if (_isSharingLocation && mounted) {
-          try {
-            await ParentLocationService().updateParentLocation(
-              parentName: _parentName,
-              childName: _childName,
-              isWaitingForPickup: _isWaitingForPickup,
-            );
-          } catch (e) {
-            print('자동 위치 업데이트 실패: $e');
-          }
-        } else {
-          timer.cancel();
-        }
-      });
-      
-    } catch (e) {
-      print('자동 위치 공유 시작 실패: $e');
-      // 실패해도 사용자에게는 알리지 않음 (자동이므로)
-    }
+  @override
+  void dispose() {
+    // Cancel all subscriptions to prevent memory leaks
+    _myLocationSubscription?.cancel();
+    _myLocationSubscription = null;
+
+    _busLocationSubscription?.cancel();
+    _busLocationSubscription = null;
+
+    // Stop simulator and dispose resources
+    _simulator.stopSimulation();
+    _simulator.dispose();
+
+    // Clear map controller reference
+    _mapController = null;
+
+    super.dispose();
   }
 
-  Future<void> _loadBusLocation() async {
+  /// Start real-time location tracking using streams
+  Future<void> _startRealTimeLocationTracking() async {
     setState(() {
       _isLoadingLocation = true;
     });
 
-    // 실제로는 서버에서 버스 위치를 가져오지만, 
-    // 지금은 LocationService로 시뮬레이션
-    final locationService = LocationService();
-    
     try {
-      final location = await locationService.getCurrentLocation(
-        busId: 'BUS001',
-        driverId: 'DRIVER001',
+      print('Starting real-time location tracking for parent...');
+
+      // Try to get last known position first for immediate loading
+      LocationData? cachedLocation = await _locationService.getCurrentLocation(
+        busId: 'PARENT_LOCATION',
+        driverId: _parentName,
       );
 
-      if (location != null) {
+      if (cachedLocation != null && mounted) {
+        print('Using cached location for immediate display');
         setState(() {
-          _busLocation = location;
-          // _updateBusMarker(location); // 임시 주석 처리
+          _myLocation = cachedLocation;
+          _isLoadingLocation = false; // Remove loading state immediately
         });
 
-        // 지도 카메라를 버스 위치로 이동
-        // if (_mapController != null) { // 임시 주석 처리
-        //   _mapController!.animateCamera(
-        //     CameraUpdate.newLatLng(
-        //       LatLng(location.latitude, location.longitude),
-        //     ),
-        //   );
-        // }
+        // Start driver simulation immediately with cached location
+        if (_busLocation == null) {
+          final simulatedDriverLocation = LocationData(
+            latitude: cachedLocation.latitude + 0.005, // ~500m north
+            longitude: cachedLocation.longitude + 0.003,
+            accuracy: 10.0,
+            altitude: cachedLocation.altitude,
+            speed: 15.0,
+            timestamp: DateTime.now(),
+            busId: 'BUS001',
+            driverId: 'DRIVER001',
+          );
+
+          _simulator.startDriverSimulation(initialLocation: simulatedDriverLocation);
+        }
+      }
+
+      // Continue with real-time location stream for updates
+      _myLocationSubscription = _locationService.startLocationStream(
+        busId: 'PARENT_LOCATION',
+        driverId: _parentName,
+      ).listen(
+        (LocationData myLocation) {
+          if (!mounted) return; // Early return if widget disposed
+
+          try {
+            setState(() {
+              _myLocation = myLocation;
+              // Don't set _isLoadingLocation = false here since we already set it with cached data
+            });
+
+            // Update driver simulation with real location
+            if (mounted) {
+              final simulatedDriverLocation = LocationData(
+                latitude: myLocation.latitude + 0.005, // ~500m north
+                longitude: myLocation.longitude + 0.003,
+                accuracy: 10.0,
+                altitude: myLocation.altitude,
+                speed: 15.0,
+                timestamp: DateTime.now(),
+                busId: 'BUS001',
+                driverId: 'DRIVER001',
+              );
+
+              // Update existing simulation or start new one
+              if (_busLocation == null) {
+                _simulator.startDriverSimulation(initialLocation: simulatedDriverLocation);
+              }
+            }
+          } catch (e) {
+            print('Error updating location state: $e');
+          }
+        },
+        onError: (error) {
+          print('Error in my location stream: $error');
+          if (mounted && _myLocation == null) {
+            // Only set loading to false if we don't have cached location
+            try {
+              setState(() {
+                _isLoadingLocation = false;
+              });
+            } catch (e) {
+              print('Error updating loading state: $e');
+            }
+          }
+          // Don't show error messages to user - just log them
+          // Only log errors silently for debugging
+        },
+      );
+
+      // Listen to simulated driver location updates
+      _busLocationSubscription = _simulator.driverLocationStream.listen(
+        (LocationData driverLocation) {
+          if (mounted) {
+            setState(() {
+              _busLocation = driverLocation;
+            });
+          }
+        },
+      );
+
+    } catch (e) {
+      print('Error starting real-time tracking: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+        });
+        // Don't show error messages to user - just log them
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(content: Text('실시간 위치 추적 시작 실패: $e')),
+        // );
+      }
+    }
+  }
+
+  /// Move camera to my location
+  Future<void> _moveToMyLocation() async {
+    if (_isMovingToMyLocation || _myLocation == null || _mapController == null) {
+      return;
+    }
+
+    setState(() {
+      _isMovingToMyLocation = true;
+    });
+
+    try {
+      await _mapController!.updateCamera(
+        NCameraUpdate.fromCameraPosition(
+          NCameraPosition(
+            target: NLatLng(_myLocation!.latitude, _myLocation!.longitude),
+            zoom: 16,
+          ),
+        ),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars(); // 기존 스낵바 제거
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('내 위치로 이동'),
+            duration: Duration(seconds: 1),
+          ),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('위치를 가져올 수 없습니다: $e')),
-      );
+      print('Error moving to my location: $e');
     } finally {
+      if (mounted) {
+        setState(() {
+          _isMovingToMyLocation = false;
+        });
+      }
+    }
+  }
+
+  /// Move camera to bus location
+  Future<void> _moveToBusLocation() async {
+    if (_isMovingToBusLocation || _busLocation == null || _mapController == null) {
+      return;
+    }
+
+    setState(() {
+      _isMovingToBusLocation = true;
+    });
+
+    try {
+      await _mapController!.updateCamera(
+        NCameraUpdate.fromCameraPosition(
+          NCameraPosition(
+            target: NLatLng(_busLocation!.latitude, _busLocation!.longitude),
+            zoom: 16,
+          ),
+        ),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars(); // 기존 스낵바 제거
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('셔틀 위치로 이동'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error moving to bus location: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isMovingToBusLocation = false;
+        });
+      }
+    }
+  }
+
+  /// Fallback method for manual refresh
+  Future<void> _loadBusLocation() async {
+    if (!mounted) return; // 화면이 살아있는지 확인
+
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    final locationService = LocationService();
+    LocationData? myLocation;
+    LocationData? busLocation;
+
+    try {
+      // 내 위치 가져오기 (타임아웃 3초)
+      myLocation = await locationService.getCurrentLocation(
+        busId: 'PARENT_LOCATION',
+        driverId: _parentName,
+      ).timeout(const Duration(seconds: 15));
+
+      // 내 위치 성공 시 버스 위치 생성
+      if (myLocation != null) {
+        busLocation = await locationService.getSimulatedBusLocation(
+          busId: 'BUS001',
+          driverId: 'DRIVER001',
+          userLocation: myLocation,
+        );
+      }
+    } catch (e) {
+      print('Parent location error: $e');
+
+      // GPS 실패 시 에러만 표시하고 기본값 사용 안함
+      if (mounted) {
+        // Don't show timeout errors to user - they can be frequent and annoying
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(
+        //     content: Text('위치를 가져올 수 없습니다: $e'),
+        //     duration: const Duration(seconds: 2),
+        //   ),
+        // );
+      }
+      return; // 기본 위치 사용하지 않음
+    }
+
+    // 화면이 살아있을 때만 업데이트
+    if (mounted && myLocation != null) {
+      setState(() {
+        _myLocation = myLocation;
+        _busLocation = busLocation;
+      });
+    }
+
+    if (mounted) {
       setState(() {
         _isLoadingLocation = false;
       });
     }
   }
 
-  // void _updateBusMarker(LocationData location) { // 임시 주석 처리
-  //   final marker = Marker(
-  //     markerId: const MarkerId('bus'),
-  //     position: LatLng(location.latitude, location.longitude),
-  //     icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-  //     infoWindow: InfoWindow(
-  //       title: '셔틀버스',
-  //       snippet: '버스 ID: ${location.busId}\n시간: ${location.timestamp.toString().substring(11, 19)}',
-  //     ),
-  //   );
 
-  //   setState(() {
-  //     _markers.clear();
-  //     _markers.add(marker);
-  //   });
-  // }
-
-  // 학부모 위치 공유 시작/중지
-  Future<void> _toggleLocationSharing() async {
-    if (_isSharingLocation) {
-      setState(() {
-        _isSharingLocation = false;
-        _isWaitingForPickup = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('위치 공유를 중지했습니다')),
-      );
-    } else {
-      try {
-        await ParentLocationService().updateParentLocation(
-          parentName: _parentName,
-          childName: _childName,
-          isWaitingForPickup: _isWaitingForPickup,
-        );
-        setState(() {
-          _isSharingLocation = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('위치 공유를 시작했습니다')),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('위치 공유 실패: $e')),
-        );
-      }
-    }
-  }
-
-  // 픽업 대기 상태 토글
-  Future<void> _toggleWaitingStatus() async {
-    if (!_isSharingLocation) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('먼저 위치 공유를 활성화하세요')),
-      );
-      return;
-    }
-
-    setState(() {
-      _isWaitingForPickup = !_isWaitingForPickup;
-    });
-
-    try {
-      await ParentLocationService().updateParentLocation(
-        parentName: _parentName,
-        childName: _childName,
-        isWaitingForPickup: _isWaitingForPickup,
-      );
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isWaitingForPickup ? '픽업 대기 중입니다' : '픽업 대기를 해제했습니다'),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('상태 변경 실패: $e')),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -320,14 +494,24 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       ),
       body: Stack(
         children: [
-          // 네이버 지도 (플랫폼별 렌더링)
+          // 네이버 지도 (학부모 뷰: 본인 위치 + 버스 기사 위치)
           Positioned.fill(
-            child: kIsWeb 
+            child: kIsWeb
               ? NaverMapWidget(
                   busLocation: _busLocation,
+                  currentUserLocation: _myLocation,
+                  isDriverView: false,
+                  onMapControllerReady: (controller) {
+                    _mapController = controller;
+                  },
                 )
               : NaverMapWidget(
                   busLocation: _busLocation,
+                  currentUserLocation: _myLocation,
+                  isDriverView: false,
+                  onMapControllerReady: (controller) {
+                    _mapController = controller;
+                  },
                 ),
           ),
           
@@ -377,45 +561,61 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // 버튼들을 행으로 배치
+                  // 첫 번째 행: 내위치/셔틀위치 버튼
                   Row(
                     children: [
-                      // 위치 공유 토글 버튼
+                      // 내위치 버튼
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: _toggleLocationSharing,
-                          icon: Icon(
-                            _isSharingLocation ? Icons.location_off : Icons.location_on,
-                            size: 16,
-                          ),
+                          onPressed: (_myLocation != null && !_isMovingToMyLocation)
+                              ? _moveToMyLocation
+                              : null,
+                          icon: _isMovingToMyLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.my_location, size: 16),
                           label: Text(
-                            _isSharingLocation ? '공유 중지' : '공유 시작',
+                            _isMovingToMyLocation ? '이동중...' : '내위치',
                             style: const TextStyle(fontSize: 12),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _isSharingLocation ? Colors.red : Colors.green,
+                            backgroundColor: _isMovingToMyLocation ? Colors.grey : Colors.red,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                           ),
                         ),
                       ),
-                      
+
                       const SizedBox(width: 8),
-                      
-                      // 픽업 대기 버튼
+
+                      // 셔틀위치 버튼
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: _isSharingLocation ? _toggleWaitingStatus : null,
-                          icon: Icon(
-                            _isWaitingForPickup ? Icons.cancel : Icons.front_hand,
-                            size: 16,
-                          ),
+                          onPressed: (_busLocation != null && !_isMovingToBusLocation)
+                              ? _moveToBusLocation
+                              : null,
+                          icon: _isMovingToBusLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.directions_bus, size: 16),
                           label: Text(
-                            _isWaitingForPickup ? '대기 해제' : '픽업 요청',
+                            _isMovingToBusLocation ? '이동중...' : '셔틀위치',
                             style: const TextStyle(fontSize: 12),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _isWaitingForPickup ? Colors.orange : Colors.blue,
+                            backgroundColor: _isMovingToBusLocation ? Colors.grey : Colors.blue,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                           ),
@@ -423,20 +623,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                       ),
                     ],
                   ),
-                  
-                  if (_isWaitingForPickup)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '🚌 기사님이 확인할 수 있도록 픽업 대기 중입니다',
-                        style: TextStyle(
-                          color: Colors.orange.shade700,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 11,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+
                 ],
               ),
             ),
@@ -468,7 +655,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                       ),
                       SizedBox(width: 12),
                       Text(
-                        '버스 위치 확인 중...',
+                        '위치 확인 중...',
                         style: TextStyle(color: Colors.white),
                       ),
                     ],
@@ -481,7 +668,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _isLoadingLocation ? null : _loadBusLocation,
         child: const Icon(Icons.my_location),
-        tooltip: '버스 위치 새로고침',
+        tooltip: '위치 새로고침',
       ),
     );
   }
@@ -557,16 +744,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
       );
 
       if (started) {
-        // 학부모 위치 추적도 시작
-        _parentLocationService.startTrackingParents();
+        // 학부모 위치 추적도 시작 (시뮬레이션)
         setState(() {
           _isTrackingParents = true;
         });
-        
+
         _locationService.locationStream.listen((LocationData location) {
           setState(() {
             _currentLocation = location;
             _statusMessage = '위치 전송 중 (${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)})';
+
+            // 기사 위치를 기준으로 시뮬레이션 학부모 위치 생성
+            _parentLocations = _locationService.getSimulatedParentLocations(location);
           });
         });
 
@@ -582,45 +771,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
   }
 
   Future<void> _getCurrentLocation() async {
-    if (_isLoadingLocation) return; // 중복 클릭 방지
+    if (_isLoadingLocation || !mounted) return; // 중복 클릭 방지 + mounted 체크
 
     setState(() {
       _isLoadingLocation = true;
       _statusMessage = '현재 위치 가져오는 중...';
     });
 
-    // 진행률 애니메이션 시작
-    _progressController.reset();
-    _progressController.forward();
-
     try {
-      LocationData? location = await _locationService.getCurrentLocation(
+      // 타임아웃 3초로 단축
+      LocationData? location = await LocationService().getCurrentLocation(
         busId: 'BUS001',
         driverId: 'DRIVER001',
-      );
+      ).timeout(const Duration(seconds: 15));
 
-      // 애니메이션이 완료될 때까지 잠시 대기 (최소 시각적 피드백)
-      await _progressController.forward();
-
-      if (location != null) {
+      if (mounted && location != null) {
         setState(() {
           _currentLocation = location;
           _statusMessage = '현재 위치: (${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)})';
         });
-      } else {
+      } else if (mounted) {
         setState(() {
           _statusMessage = '위치를 가져올 수 없습니다. 권한을 확인해주세요.';
         });
       }
     } catch (e) {
-      setState(() {
-        _statusMessage = '위치 요청 중 오류가 발생했습니다.';
-      });
+      if (mounted) {
+        setState(() {
+          _statusMessage = '위치 요청 중 오류가 발생했습니다: $e';
+        });
+      }
+      print('Driver location error: $e'); // 디버깅용
     } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
-      _progressController.stop();
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+        });
+      }
     }
   }
 
@@ -652,7 +839,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
             ),
             const SizedBox(height: 10),
             
-            // 로딩 인디케이터 및 진행률 표시
+            // 간단한 로딩 인디케이터
             if (_isLoadingLocation)
               Container(
                 padding: const EdgeInsets.all(16),
@@ -662,54 +849,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.blue.shade200),
                 ),
-                child: Column(
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          '위치 정보를 가져오고 있습니다...',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                        ),
-                      ],
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    const SizedBox(height: 12),
-                    AnimatedBuilder(
-                      animation: _progressAnimation,
-                      builder: (context, child) {
-                        return Column(
-                          children: [
-                            LinearProgressIndicator(
-                              value: _progressAnimation.value,
-                              backgroundColor: Colors.grey.shade300,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade400),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '예상 소요시간: ${((1 - _progressAnimation.value) * 8).toInt() + 1}초',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 8),
+                    SizedBox(width: 12),
                     Text(
-                      'WiFi 기반 위치 서비스를 사용하여\n시간이 다소 걸릴 수 있습니다.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade500,
-                      ),
+                      '위치 정보를 가져오고 있습니다...',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -808,7 +959,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
               ),
             ),
             
-            // 학부모 위치 지도 표시
+            // 학부모 위치 지도 표시 (기사 뷰: 기사 본인 + 모든 학부모)
             if (_isTrackingParents) ...[
               const SizedBox(height: 20),
               Container(
@@ -826,16 +977,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: kIsWeb 
+                  child: kIsWeb
                     ? NaverMapWidget(
                         busLocation: _currentLocation,
                         parentLocations: _parentLocations,
                         showParentLocations: true,
+                        isDriverView: true,
                       )
                     : NaverMapWidget(
                         busLocation: _currentLocation,
                         parentLocations: _parentLocations,
                         showParentLocations: true,
+                        isDriverView: true,
                       ),
                 ),
               ),
