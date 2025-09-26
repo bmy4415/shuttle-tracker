@@ -32,6 +32,13 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Force update markers whenever parentLocations change
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _updateMarkers();
+      }
+    });
+
     return NaverMap(
       options: const NaverMapViewOptions(
         initialCameraPosition: NCameraPosition(
@@ -215,11 +222,34 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     // Check if parent locations changed
     if (widget.parentLocations.length != oldWidget.parentLocations.length) {
       shouldUpdate = true;
+      print('Parent count changed: ${oldWidget.parentLocations.length} -> ${widget.parentLocations.length}');
+    } else if (widget.parentLocations.isNotEmpty && oldWidget.parentLocations.isNotEmpty) {
+      // Check if any parent location changed significantly
+      for (int i = 0; i < widget.parentLocations.length && i < oldWidget.parentLocations.length; i++) {
+        final newParent = widget.parentLocations[i];
+        final oldParent = oldWidget.parentLocations[i];
+
+        // Check if the same parent moved significantly (using parent ID)
+        if (newParent.parentId == oldParent.parentId) {
+          double latDiff = (newParent.latitude - oldParent.latitude).abs();
+          double lngDiff = (newParent.longitude - oldParent.longitude).abs();
+          if (latDiff > 0.00005 || lngDiff > 0.00005) { // ~5m threshold for more responsive updates
+            shouldUpdate = true;
+            print('Parent ${newParent.parentName} moved: lat diff: $latDiff, lng diff: $lngDiff');
+            print('New position: ${newParent.latitude}, ${newParent.longitude}');
+            print('Old position: ${oldParent.latitude}, ${oldParent.longitude}');
+            break;
+          }
+        }
+      }
+    } else if (widget.parentLocations.isNotEmpty && oldWidget.parentLocations.isEmpty) {
+      shouldUpdate = true;
+      print('Parents added: ${widget.parentLocations.length} parents');
     }
 
     if (shouldUpdate) {
       // Debounce rapid updates to prevent excessive rendering
-      Future.delayed(const Duration(milliseconds: 500), () {
+      Future.delayed(const Duration(milliseconds: 200), () { // Reduced from 500ms to 200ms for more responsiveness
         if (mounted) {
           _updateMarkers();
         }
