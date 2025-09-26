@@ -35,10 +35,14 @@ chore: 빌드 업무, 패키지 매니저 수정
 ## 개발 명령어
 
 ```bash
-# 개발
-flutter run -d chrome        # 웹 브라우저 실행
+# 개발 (우선순위)
+flutter run                  # Android/iOS 앱 실행 (기본)
 flutter run -d macos         # macOS 앱 실행
+flutter run -d chrome        # 웹 브라우저 실행 (디버깅용만)
 flutter test                 # 테스트 실행
+
+# 중요: 기본적으로 모바일 앱(Android/iOS)으로 실행하기
+# 웹 브라우저는 지도 API 제한으로 인해 사용하지 않음
 
 # Hot Restart (Flutter 앱 실행 중)
 R                            # Hot Restart (앱 완전 재시작, 상태 초기화)
