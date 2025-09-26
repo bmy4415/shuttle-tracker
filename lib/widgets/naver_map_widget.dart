@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../models/location_data.dart';
 import '../models/parent_data.dart';
+import 'custom_marker_widgets.dart';
 
 class NaverMapWidget extends StatefulWidget {
   final LocationData? busLocation;
@@ -103,20 +104,28 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     }
   }
 
-  // 기사 마커 (파란색)
+  // 기사 마커 (커스텀 위젯)
   Future<void> _addDriverMarker(LocationData busLocation) async {
     if (_controller == null) return;
 
     print('Adding driver marker at: ${busLocation.latitude}, ${busLocation.longitude}');
 
-    final marker = NMarker(
-      id: 'driver_${busLocation.busId}',
-      position: NLatLng(busLocation.latitude, busLocation.longitude),
-    );
-
     try {
-      // 파란색으로 설정
-      marker.setIconTintColor(Colors.blue);
+      // 커스텀 위젯으로 마커 아이콘 생성 (핀 모양)
+      final markerIcon = await NOverlayImage.fromWidget(
+        widget: CustomMarkerWidgets.driverMarker(
+          label: widget.isDriverView ? '내 위치' : '셔틀버스',
+        ),
+        size: const Size(80, 90),
+        context: context,
+      );
+
+      final marker = NMarker(
+        id: 'driver_${busLocation.busId}',
+        position: NLatLng(busLocation.latitude, busLocation.longitude),
+        icon: markerIcon,
+      );
+
       await _controller!.addOverlay(marker);
       _markers.add(marker);
       print('Driver marker added successfully');
@@ -125,22 +134,29 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     }
   }
 
-  // 학부모 마커 (초록색/주황색)
+  // 학부모 마커 (커스텀 위젯)
   Future<void> _addParentMarker(ParentData parent) async {
     if (_controller == null) return;
 
     print('Adding parent marker: ${parent.parentName} at ${parent.latitude}, ${parent.longitude}');
 
-    final marker = NMarker(
-      id: 'parent_${parent.parentId}',
-      position: NLatLng(parent.latitude, parent.longitude),
-    );
-
     try {
-      // 픽업 대기 중이면 주황색, 아니면 초록색
-      marker.setIconTintColor(
-        parent.isWaitingForPickup ? Colors.orange : Colors.green
+      // 커스텀 위젯으로 마커 아이콘 생성 (핀 모양)
+      final markerIcon = await NOverlayImage.fromWidget(
+        widget: CustomMarkerWidgets.parentMarker(
+          name: parent.parentName,
+          isWaitingForPickup: parent.isWaitingForPickup,
+        ),
+        size: const Size(80, 100),
+        context: context,
       );
+
+      final marker = NMarker(
+        id: 'parent_${parent.parentId}',
+        position: NLatLng(parent.latitude, parent.longitude),
+        icon: markerIcon,
+      );
+
       await _controller!.addOverlay(marker);
       _markers.add(marker);
       print('Parent marker added successfully: ${parent.parentName}');
@@ -149,20 +165,26 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     }
   }
 
-  // 현재 사용자 마커 (내 위치, 빨간색)
+  // 현재 사용자 마커 (내 위치, 커스텀 위젯)
   Future<void> _addCurrentUserMarker(LocationData userLocation) async {
     if (_controller == null) return;
 
     print('Adding current user marker at: ${userLocation.latitude}, ${userLocation.longitude}');
 
-    final marker = NMarker(
-      id: 'current_user',
-      position: NLatLng(userLocation.latitude, userLocation.longitude),
-    );
-
     try {
-      // 빨간색으로 설정 (내 위치)
-      marker.setIconTintColor(Colors.red);
+      // 커스텀 위젯으로 마커 아이콘 생성 (핀 모양 - 학부모용이므로 isDriver = false)
+      final markerIcon = await NOverlayImage.fromWidget(
+        widget: CustomMarkerWidgets.currentUserMarker(isDriver: false),
+        size: const Size(80, 90),
+        context: context,
+      );
+
+      final marker = NMarker(
+        id: 'current_user',
+        position: NLatLng(userLocation.latitude, userLocation.longitude),
+        icon: markerIcon,
+      );
+
       await _controller!.addOverlay(marker);
       _markers.add(marker);
       print('Current user marker added successfully');

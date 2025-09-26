@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'services/location_service.dart';
+import 'services/parent_driver_simulator.dart';
 import 'services/auto_location_simulator.dart';
 import 'services/driver_parent_simulator.dart';
 import 'dart:async';
@@ -186,11 +187,14 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   // Stream subscriptions
   StreamSubscription<LocationData>? _myLocationSubscription;
+
+  // Driver simulation
+  final ParentDriverSimulator _driverSimulator = ParentDriverSimulator();
+  StreamSubscription<LocationData>? _driverLocationSubscription;
   StreamSubscription<LocationData>? _busLocationSubscription;
 
   // Services
   final LocationService _locationService = LocationService();
-  final AutoLocationSimulator _simulator = AutoLocationSimulator();
 
   // Map controller for camera movement
   NaverMapController? _mapController;
@@ -214,9 +218,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     _busLocationSubscription?.cancel();
     _busLocationSubscription = null;
 
-    // Stop simulator and dispose resources
-    _simulator.stopSimulation();
-    _simulator.dispose();
+    // Stop driver simulation and dispose resources
+    _driverLocationSubscription?.cancel();
+    _driverLocationSubscription = null;
+    _driverSimulator.stopSimulation();
 
     // Clear map controller reference
     _mapController = null;
@@ -247,20 +252,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         });
 
         // Start driver simulation immediately with cached location
-        if (_busLocation == null) {
-          final simulatedDriverLocation = LocationData(
-            latitude: cachedLocation.latitude + 0.005, // ~500m north
-            longitude: cachedLocation.longitude + 0.003,
-            accuracy: 10.0,
-            altitude: cachedLocation.altitude,
-            speed: 15.0,
-            timestamp: DateTime.now(),
-            busId: 'BUS001',
-            driverId: 'DRIVER001',
-          );
-
-          _simulator.startDriverSimulation(initialLocation: simulatedDriverLocation);
-        }
+        _driverSimulator.startSimulation(cachedLocation);
       }
 
       // Continue with real-time location stream for updates
@@ -292,7 +284,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
               // Update existing simulation or start new one
               if (_busLocation == null) {
-                _simulator.startDriverSimulation(initialLocation: simulatedDriverLocation);
+                _driverSimulator.startSimulation(myLocation);
+              } else {
+                _driverSimulator.updateParentLocation(myLocation);
               }
             }
           } catch (e) {
@@ -317,13 +311,17 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       );
 
       // Listen to simulated driver location updates
-      _busLocationSubscription = _simulator.driverLocationStream.listen(
+      _driverLocationSubscription = _driverSimulator.driverLocationStream.listen(
         (LocationData driverLocation) {
           if (mounted) {
             setState(() {
               _busLocation = driverLocation;
             });
+            print('Updated driver location: ${driverLocation.latitude}, ${driverLocation.longitude}');
           }
+        },
+        onError: (error) {
+          print('Error in driver location stream: $error');
         },
       );
 

@@ -85,7 +85,7 @@ class DriverParentSimulator {
         longitude: parentLocation.longitude,
         accuracy: parentLocation.accuracy,
         timestamp: DateTime.now(),
-        isWaitingForPickup: i == 1, // Second parent is waiting for pickup
+        isWaitingForPickup: false, // No parents are waiting for pickup
       );
 
       _parentLocations.add(parent);
