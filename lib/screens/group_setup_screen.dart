@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../models/user_model.dart';
+import '../models/location_sharing_schedule_model.dart';
 import '../services/auth_service.dart';
 import '../services/group_service.dart';
 
@@ -59,6 +60,7 @@ class _GroupSetupScreenState extends State<GroupSetupScreen> {
       final group = await groupService.createGroup(
         widget.user,
         _groupNameController.text.trim(),
+        schedule: LocationSharingScheduleModel.defaultSchedule(),
       );
 
       // Update user with group ID

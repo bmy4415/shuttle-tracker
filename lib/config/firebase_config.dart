@@ -8,6 +8,8 @@ import 'env_config.dart';
 
 /// Firebase configuration and initialization
 class FirebaseConfig {
+  static bool _emulatorsConnected = false;
+
   static Future<void> initialize() async {
     // Initialize Firebase
     await Firebase.initializeApp(
@@ -15,8 +17,10 @@ class FirebaseConfig {
     );
 
     // Connect to emulators in local environment
-    if (EnvConfig.isLocal) {
+    // IMPORTANT: Must connect to emulators BEFORE any Firebase operations
+    if (EnvConfig.isLocal && !_emulatorsConnected) {
       await _connectToEmulators();
+      _emulatorsConnected = true;
     }
 
     if (kDebugMode) {
@@ -73,13 +77,14 @@ class FirebaseConfig {
   static FirebaseOptions _getFirebaseOptions() {
     switch (EnvConfig.current) {
       case AppEnvironment.local:
-        // Demo project for emulator (no real credentials needed)
+        // Demo project for emulator
+        // Using 'demo-' prefix tells Firebase to skip API key validation
         return const FirebaseOptions(
-          apiKey: 'demo-api-key',
-          appId: '1:123456789:android:abc123',
+          apiKey: 'fake-api-key-for-emulator',
+          appId: '1:123456789:web:abc123def456',
           messagingSenderId: '123456789',
-          projectId: 'shuttle-tracker-local',
-          databaseURL: 'http://localhost:9000?ns=shuttle-tracker-local',
+          projectId: 'demo-shuttle-tracker',
+          databaseURL: 'http://localhost:9000?ns=demo-shuttle-tracker',
         );
 
       case AppEnvironment.dev:

@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../models/user_model.dart';
 import '../models/group_model.dart';
 import '../models/location_data.dart';
+import '../models/shared_location_model.dart';
+import '../models/group_member_model.dart';
 import '../services/location_service.dart';
-import '../services/parent_driver_simulator.dart';
-import '../services/auth_service.dart';
+import '../services/location_sharing_service.dart';
 import '../widgets/naver_map_widget.dart';
 
 /// Parent home screen - Shows bus location and parent's own location
@@ -24,23 +26,21 @@ class ParentHomeScreen extends StatefulWidget {
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
   LocationData? _busLocation;
-  LocationData? _myLocation; // 학부모 본인의 위치
+  LocationData? _myLocation;
   bool _isLoadingLocation = false;
-
-  // 학부모 정보 (실제로는 로그인 정보에서 가져옴)
-  final String _parentName = '김엄마';
-  final String _childName = '김민수';
-
-  // Stream subscriptions
-  StreamSubscription<LocationData>? _myLocationSubscription;
-
-  // Driver simulation
-  final ParentDriverSimulator _driverSimulator = ParentDriverSimulator();
-  StreamSubscription<LocationData>? _driverLocationSubscription;
-  StreamSubscription<LocationData>? _busLocationSubscription;
+  bool _isSharing = true; // 위치 공유 상태
 
   // Services
   final LocationService _locationService = LocationService();
+  late final LocationSharingService _sharingService;
+
+  // Stream subscriptions
+  StreamSubscription<LocationData>? _myLocationSubscription;
+  StreamSubscription<SharedLocationModel?>? _driverLocationSubscription;
+  StreamSubscription<List<GroupMemberModel>>? _membersSubscription;
+
+  // Group members (names only, for dialog)
+  List<GroupMemberModel> _groupMembers = [];
 
   // Map controller for camera movement
   NaverMapController? _mapController;
@@ -52,153 +52,309 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _startRealTimeLocationTracking();
+    _sharingService = LocationSharingService.getInstance();
+    _startLocationSharing();
   }
 
   @override
   void dispose() {
-    // Cancel all subscriptions to prevent memory leaks
     _myLocationSubscription?.cancel();
-    _myLocationSubscription = null;
-
-    _busLocationSubscription?.cancel();
-    _busLocationSubscription = null;
-
-    // Stop driver simulation and dispose resources
     _driverLocationSubscription?.cancel();
-    _driverLocationSubscription = null;
-    _driverSimulator.stopSimulation();
-
-    // Clear map controller reference
+    _membersSubscription?.cancel();
     _mapController = null;
-
     super.dispose();
   }
 
-  /// Start real-time location tracking using streams
-  Future<void> _startRealTimeLocationTracking() async {
+  /// Start location sharing and subscribe to driver location
+  Future<void> _startLocationSharing() async {
+    if (widget.group == null) return;
+
     setState(() {
       _isLoadingLocation = true;
     });
 
     try {
-      print('Starting real-time location tracking for parent...');
+      final groupId = widget.group!.id;
+      final userId = widget.user.id;
 
-      // Try to get last known position first for immediate loading
-      LocationData? cachedLocation = await _locationService.getCurrentLocation(
-        busId: 'PARENT_LOCATION',
-        driverId: _parentName,
+      // Setup disconnect handler
+      await _sharingService.setupDisconnectHandler(
+        groupId: groupId,
+        userId: userId,
       );
 
-      if (cachedLocation != null && mounted) {
-        print('Using cached location for immediate display');
+      // Start sharing my location
+      await _sharingService.startSharing(
+        groupId: groupId,
+        userId: userId,
+        displayName: widget.user.nickname,
+        role: widget.user.role,
+      );
+
+      setState(() {
+        _isSharing = true;
+      });
+
+      // Subscribe to driver location
+      _driverLocationSubscription = _sharingService
+          .watchDriverLocation(
+            groupId: groupId,
+            driverId: widget.group!.driverId,
+          )
+          .listen((driverLocation) {
+        if (mounted && driverLocation != null && driverLocation.isSharing) {
+          setState(() {
+            _busLocation = LocationData(
+              latitude: driverLocation.latitude,
+              longitude: driverLocation.longitude,
+              accuracy: driverLocation.accuracy ?? 10.0,
+              timestamp: driverLocation.dateTime,
+              busId: 'driver',
+              driverId: driverLocation.userId,
+            );
+          });
+        }
+      });
+
+      // Subscribe to group members (for info dialog)
+      _membersSubscription = _sharingService
+          .watchGroupMembers(groupId: groupId)
+          .listen((members) {
+        if (mounted) {
+          setState(() {
+            _groupMembers = members;
+          });
+        }
+      });
+
+      // Start tracking my own GPS location
+      _myLocationSubscription = _locationService
+          .startLocationStream(busId: 'PARENT', driverId: userId)
+          .listen((myLocation) async {
+        if (!mounted) return;
+
         setState(() {
-          _myLocation = cachedLocation;
-          _isLoadingLocation = false; // Remove loading state immediately
+          _myLocation = myLocation;
+          _isLoadingLocation = false;
         });
 
-        // Start driver simulation immediately with cached location
-        _driverSimulator.startSimulation(cachedLocation);
-      }
-
-      // Continue with real-time location stream for updates
-      _myLocationSubscription = _locationService
-          .startLocationStream(busId: 'PARENT_LOCATION', driverId: _parentName)
-          .listen(
-            (LocationData myLocation) {
-              if (!mounted) return; // Early return if widget disposed
-
-              try {
-                setState(() {
-                  _myLocation = myLocation;
-                  // Don't set _isLoadingLocation = false here since we already set it with cached data
-                });
-
-                // Update driver simulation with real location
-                if (mounted) {
-                  final simulatedDriverLocation = LocationData(
-                    latitude: myLocation.latitude + 0.005, // ~500m north
-                    longitude: myLocation.longitude + 0.003,
-                    accuracy: 10.0,
-                    altitude: myLocation.altitude,
-                    speed: 15.0,
-                    timestamp: DateTime.now(),
-                    busId: 'BUS001',
-                    driverId: 'DRIVER001',
-                  );
-
-                  // Update existing simulation or start new one
-                  if (_busLocation == null) {
-                    _driverSimulator.startSimulation(myLocation);
-                  } else {
-                    _driverSimulator.updateParentLocation(myLocation);
-                  }
-                }
-              } catch (e) {
-                print('Error updating location state: $e');
-              }
-            },
-            onError: (error) {
-              print('Error in my location stream: $error');
-              if (mounted && _myLocation == null) {
-                // Only set loading to false if we don't have cached location
-                try {
-                  setState(() {
-                    _isLoadingLocation = false;
-                  });
-                } catch (e) {
-                  print('Error updating loading state: $e');
-                }
-              }
-              // Don't show error messages to user - just log them
-              // Only log errors silently for debugging
-            },
+        // Update my location in Firebase if sharing
+        if (_isSharing) {
+          await _sharingService.updateLocation(
+            groupId: groupId,
+            location: SharedLocationModel(
+              userId: userId,
+              groupId: groupId,
+              displayName: widget.user.nickname,
+              role: widget.user.role,
+              latitude: myLocation.latitude,
+              longitude: myLocation.longitude,
+              accuracy: myLocation.accuracy,
+              timestamp: DateTime.now().millisecondsSinceEpoch,
+              isSharing: true,
+            ),
           );
-
-      // Listen to simulated driver location updates
-      _driverLocationSubscription = _driverSimulator.driverLocationStream.listen(
-        (LocationData driverLocation) {
-          if (mounted) {
-            setState(() {
-              _busLocation = driverLocation;
-            });
-            print(
-              'Updated driver location: ${driverLocation.latitude}, ${driverLocation.longitude}',
-            );
-          }
-        },
-        onError: (error) {
-          print('Error in driver location stream: $error');
-        },
-      );
+        }
+      });
     } catch (e) {
-      print('Error starting real-time tracking: $e');
+      if (kDebugMode) {
+        print('Error starting location sharing: $e');
+      }
       if (mounted) {
         setState(() {
           _isLoadingLocation = false;
         });
-        // Don't show error messages to user - just log them
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   SnackBar(content: Text('실시간 위치 추적 시작 실패: $e')),
-        // );
       }
     }
   }
 
+  /// Toggle location sharing
+  Future<void> _toggleSharing() async {
+    if (widget.group == null) return;
+
+    final groupId = widget.group!.id;
+    final userId = widget.user.id;
+
+    try {
+      if (_isSharing) {
+        await _sharingService.stopSharing(groupId: groupId, userId: userId);
+        setState(() {
+          _isSharing = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('위치 공유가 중지되었습니다')),
+          );
+        }
+      } else {
+        await _sharingService.startSharing(
+          groupId: groupId,
+          userId: userId,
+          displayName: widget.user.nickname,
+          role: widget.user.role,
+        );
+        setState(() {
+          _isSharing = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('위치 공유가 시작되었습니다')),
+          );
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error toggling sharing: $e');
+      }
+    }
+  }
+
+  /// Show group info dialog
+  void _showGroupInfoDialog() {
+    if (widget.group == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline),
+            SizedBox(width: 8),
+            Text('그룹 정보'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Group name
+              Text(
+                '이름: ${widget.group!.name}',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+
+              // Group code with copy button
+              Row(
+                children: [
+                  const Text('코드: ', style: TextStyle(fontSize: 16)),
+                  Text(
+                    widget.group!.code,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 20),
+                    onPressed: () {
+                      Clipboard.setData(
+                        ClipboardData(text: widget.group!.code),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('코드가 복사되었습니다')),
+                      );
+                    },
+                    tooltip: '복사',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Sharing schedule
+              const Text(
+                '위치 공유 시간',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(widget.group!.sharingSchedule.timeRangeString),
+              Text(widget.group!.sharingSchedule.weekdayString),
+              if (widget.group!.sharingSchedule.excludeHolidays)
+                const Text(
+                  '공휴일 제외',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              const SizedBox(height: 12),
+
+              // Members list
+              const Text(
+                '멤버',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (_groupMembers.isEmpty)
+                const Text(
+                  '멤버 정보 로딩 중...',
+                  style: TextStyle(color: Colors.grey),
+                )
+              else
+                ...(_groupMembers.map((member) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            member.role == UserRole.driver
+                                ? Icons.directions_bus
+                                : Icons.person,
+                            size: 16,
+                            color: member.role == UserRole.driver
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(member.displayName),
+                          if (member.role == UserRole.driver)
+                            const Text(' (기사)',
+                                style: TextStyle(color: Colors.blue)),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: member.isOnline
+                                  ? Colors.green.shade100
+                                  : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              member.statusText,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: member.isOnline
+                                    ? Colors.green.shade800
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ))),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Move camera to my location
   Future<void> _moveToMyLocation() async {
-    // Skip on web - map not available
     if (kIsWeb) return;
-
-    if (_isMovingToMyLocation ||
-        _myLocation == null ||
-        _mapController == null) {
+    if (_isMovingToMyLocation || _myLocation == null || _mapController == null) {
       return;
     }
 
-    setState(() {
-      _isMovingToMyLocation = true;
-    });
+    setState(() => _isMovingToMyLocation = true);
 
     try {
       await _mapController!.updateCamera(
@@ -209,41 +365,21 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           ),
         ),
       );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars(); // 기존 스낵바 제거
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('내 위치로 이동'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
     } catch (e) {
-      print('Error moving to my location: $e');
+      if (kDebugMode) print('Error moving to my location: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isMovingToMyLocation = false;
-        });
-      }
+      if (mounted) setState(() => _isMovingToMyLocation = false);
     }
   }
 
   /// Move camera to bus location
   Future<void> _moveToBusLocation() async {
-    // Skip on web - map not available
     if (kIsWeb) return;
-
-    if (_isMovingToBusLocation ||
-        _busLocation == null ||
-        _mapController == null) {
+    if (_isMovingToBusLocation || _busLocation == null || _mapController == null) {
       return;
     }
 
-    setState(() {
-      _isMovingToBusLocation = true;
-    });
+    setState(() => _isMovingToBusLocation = true);
 
     try {
       await _mapController!.updateCamera(
@@ -254,310 +390,235 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           ),
         ),
       );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars(); // 기존 스낵바 제거
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('셔틀 위치로 이동'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
     } catch (e) {
-      print('Error moving to bus location: $e');
+      if (kDebugMode) print('Error moving to bus location: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isMovingToBusLocation = false;
-        });
-      }
-    }
-  }
-
-  /// Fallback method for manual refresh
-  Future<void> _loadBusLocation() async {
-    if (!mounted) return; // 화면이 살아있는지 확인
-
-    setState(() {
-      _isLoadingLocation = true;
-    });
-
-    final locationService = LocationService();
-    LocationData? myLocation;
-    LocationData? busLocation;
-
-    try {
-      // 내 위치 가져오기 (타임아웃 3초)
-      myLocation = await locationService
-          .getCurrentLocation(busId: 'PARENT_LOCATION', driverId: _parentName)
-          .timeout(const Duration(seconds: 15));
-
-      // 내 위치 성공 시 버스 위치 생성
-      if (myLocation != null) {
-        busLocation = await locationService.getSimulatedBusLocation(
-          busId: 'BUS001',
-          driverId: 'DRIVER001',
-          userLocation: myLocation,
-        );
-      }
-    } catch (e) {
-      print('Parent location error: $e');
-
-      // GPS 실패 시 에러만 표시하고 기본값 사용 안함
-      if (mounted) {
-        // Don't show timeout errors to user - they can be frequent and annoying
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   SnackBar(
-        //     content: Text('위치를 가져올 수 없습니다: $e'),
-        //     duration: const Duration(seconds: 2),
-        //   ),
-        // );
-      }
-      return; // 기본 위치 사용하지 않음
-    }
-
-    // 화면이 살아있을 때만 업데이트
-    if (mounted && myLocation != null) {
-      setState(() {
-        _myLocation = myLocation;
-        _busLocation = busLocation;
-      });
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoadingLocation = false;
-      });
+      if (mounted) setState(() => _isMovingToBusLocation = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: const Text('학부모 화면'),
-          backgroundColor: Colors.blue.shade100,
-          actions: [
+      appBar: AppBar(
+        title: const Text('학부모 화면'),
+        backgroundColor: Colors.blue.shade100,
+        actions: [
+          // Group info button
+          if (widget.group != null)
             IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () => context.push('/settings'),
-              tooltip: '설정',
+              icon: const Icon(Icons.info_outline),
+              onPressed: _showGroupInfoDialog,
+              tooltip: '그룹 정보',
             ),
-            IconButton(
-              onPressed: _isLoadingLocation ? null : _loadBusLocation,
-              icon: _isLoadingLocation
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => context.push('/settings'),
+            tooltip: '설정',
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          // Map
+          Positioned.fill(
+            child: NaverMapWidget(
+              busLocation: _busLocation,
+              currentUserLocation: _myLocation,
+              isDriverView: false,
+              onMapControllerReady: (controller) {
+                _mapController = controller;
+              },
             ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            // 네이버 지도 (학부모 뷰: 본인 위치 + 버스 기사 위치)
-            Positioned.fill(
-              child: kIsWeb
-                  ? NaverMapWidget(
-                      busLocation: _busLocation,
-                      currentUserLocation: _myLocation,
-                      isDriverView: false,
-                      onMapControllerReady: (controller) {
-                        _mapController = controller;
-                      },
-                    )
-                  : NaverMapWidget(
-                      busLocation: _busLocation,
-                      currentUserLocation: _myLocation,
-                      isDriverView: false,
-                      onMapControllerReady: (controller) {
-                        _mapController = controller;
-                      },
-                    ),
-            ),
+          ),
 
-            // 학부모 위치 공유 컨트롤 (지도 위에 오버레이)
-            Positioned(
-              bottom: 20,
-              left: 16,
-              right: 16,
+          // Sharing status badge (top)
+          Positioned(
+            top: 16,
+            left: 0,
+            right: 0,
+            child: Center(
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  color: _isSharing ? Colors.green : Colors.grey,
+                  borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 8,
                     ),
                   ],
                 ),
-                child: Column(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.person_pin_circle,
-                          color: Colors.green.shade600,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '나의 위치 공유',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade800,
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      _isSharing ? Icons.location_on : Icons.location_off,
+                      color: Colors.white,
+                      size: 16,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(width: 6),
                     Text(
-                      '$_parentName ($_childName)',
-                      style: TextStyle(
+                      _isSharing ? '위치 공유 중' : '공유 중지됨',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: Colors.green.shade600,
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 첫 번째 행: 내위치/셔틀위치 버튼
-                    Row(
-                      children: [
-                        // 내위치 버튼
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed:
-                                (_myLocation != null && !_isMovingToMyLocation)
-                                ? _moveToMyLocation
-                                : null,
-                            icon: _isMovingToMyLocation
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Icon(Icons.my_location, size: 16),
-                            label: Text(
-                              _isMovingToMyLocation ? '이동중...' : '내위치',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isMovingToMyLocation
-                                  ? Colors.grey
-                                  : Colors.red,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                                horizontal: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(width: 8),
-
-                        // 셔틀위치 버튼
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed:
-                                (_busLocation != null &&
-                                    !_isMovingToBusLocation)
-                                ? _moveToBusLocation
-                                : null,
-                            icon: _isMovingToBusLocation
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Icon(Icons.directions_bus, size: 16),
-                            label: Text(
-                              _isMovingToBusLocation ? '이동중...' : '셔틀위치',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isMovingToBusLocation
-                                  ? Colors.grey
-                                  : Colors.blue,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                                horizontal: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
               ),
             ),
+          ),
 
-            // 로딩 인디케이터
-            if (_isLoadingLocation)
-              Positioned(
-                bottom: 100,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
+          // Bottom control panel
+          Positioned(
+            bottom: 20,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // User info
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person, color: Colors.blue.shade600),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.user.nickname,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Location buttons row
+                  Row(
+                    children: [
+                      // My location button
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: (_myLocation != null && !_isMovingToMyLocation)
+                              ? _moveToMyLocation
+                              : null,
+                          icon: _isMovingToMyLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.my_location, size: 16),
+                          label: const Text('내위치', style: TextStyle(fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
                           ),
                         ),
-                        SizedBox(width: 12),
-                        Text(
-                          '위치 확인 중...',
-                          style: TextStyle(color: Colors.white),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Bus location button
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: (_busLocation != null && !_isMovingToBusLocation)
+                              ? _moveToBusLocation
+                              : null,
+                          icon: _isMovingToBusLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.directions_bus, size: 16),
+                          label: const Text('셔틀위치', style: TextStyle(fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                          ),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Stop/Start sharing button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _toggleSharing,
+                      icon: Icon(_isSharing ? Icons.stop : Icons.play_arrow),
+                      label: Text(_isSharing ? '공유 중지' : '공유 시작'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isSharing ? Colors.red.shade700 : Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
                     ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Loading indicator
+          if (_isLoadingLocation)
+            Positioned(
+              top: 80,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text('위치 확인 중...', style: TextStyle(color: Colors.white)),
+                    ],
                   ),
                 ),
               ),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _isLoadingLocation ? null : _loadBusLocation,
-          child: const Icon(Icons.my_location),
-          tooltip: '위치 새로고침',
-        ),
+            ),
+        ],
+      ),
     );
   }
 }

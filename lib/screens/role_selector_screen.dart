@@ -98,8 +98,14 @@ class _RoleSelectorScreenState extends State<RoleSelectorScreen> {
 
       if (!mounted) return;
 
-      // Navigate to group setup
-      context.push('/group-setup', extra: user);
+      // Navigate based on role
+      if (role == UserRole.driver) {
+        // Driver goes to groups list
+        context.go('/driver-groups');
+      } else {
+        // Parent goes to group setup
+        context.push('/group-setup', extra: user);
+      }
       setState(() => _isLoading = false);
     } catch (e) {
       if (!mounted) return;

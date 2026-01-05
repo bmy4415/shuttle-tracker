@@ -24,8 +24,8 @@ class LocationSharingService {
       _database.ref('locations/$groupId');
 
   /// Reference to a specific user's location
-  DatabaseReference _userLocationRef(String groupId, String odlI) =>
-      _database.ref('locations/$groupId/$odlI');
+  DatabaseReference _userLocationRef(String groupId, String userId) =>
+      _database.ref('locations/$groupId/$userId');
 
   /// Reference to group settings (schedule)
   DatabaseReference _groupScheduleRef(String groupId) =>
@@ -36,20 +36,20 @@ class LocationSharingService {
       _database.ref('groups/$groupId/isSharingActive');
 
   /// Reference to presence data
-  DatabaseReference _presenceRef(String groupId, String odlI) =>
-      _database.ref('presence/$groupId/$odlI');
+  DatabaseReference _presenceRef(String groupId, String userId) =>
+      _database.ref('presence/$groupId/$userId');
 
   // ============== Location Sharing ==============
 
   /// Start sharing location (set isSharing = true)
   Future<void> startSharing({
     required String groupId,
-    required String odlI,
+    required String userId,
     required String displayName,
     required UserRole role,
   }) async {
     try {
-      await _userLocationRef(groupId, odlI).update({
+      await _userLocationRef(groupId, userId).update({
         'isSharing': true,
         'displayName': displayName,
         'role': role.toString(),
@@ -57,7 +57,7 @@ class LocationSharingService {
       });
 
       // Update presence
-      await _presenceRef(groupId, odlI).update({
+      await _presenceRef(groupId, userId).update({
         'isOnline': true,
         'isSharing': true,
         'displayName': displayName,
@@ -66,7 +66,7 @@ class LocationSharingService {
       });
 
       if (kDebugMode) {
-        print('LocationSharing: Started sharing for $odlI in group $groupId');
+        print('LocationSharing: Started sharing for $userId in group $groupId');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -79,22 +79,22 @@ class LocationSharingService {
   /// Stop sharing location (set isSharing = false)
   Future<void> stopSharing({
     required String groupId,
-    required String odlI,
+    required String userId,
   }) async {
     try {
-      await _userLocationRef(groupId, odlI).update({
+      await _userLocationRef(groupId, userId).update({
         'isSharing': false,
         'timestamp': ServerValue.timestamp,
       });
 
       // Update presence
-      await _presenceRef(groupId, odlI).update({
+      await _presenceRef(groupId, userId).update({
         'isSharing': false,
         'lastSeen': ServerValue.timestamp,
       });
 
       if (kDebugMode) {
-        print('LocationSharing: Stopped sharing for $odlI in group $groupId');
+        print('LocationSharing: Stopped sharing for $userId in group $groupId');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -127,14 +127,14 @@ class LocationSharingService {
   /// Remove user's location data (when leaving group)
   Future<void> removeLocation({
     required String groupId,
-    required String odlI,
+    required String userId,
   }) async {
     try {
-      await _userLocationRef(groupId, odlI).remove();
-      await _presenceRef(groupId, odlI).remove();
+      await _userLocationRef(groupId, userId).remove();
+      await _presenceRef(groupId, userId).remove();
 
       if (kDebugMode) {
-        print('LocationSharing: Removed location for $odlI');
+        print('LocationSharing: Removed location for $userId');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -214,11 +214,11 @@ class LocationSharingService {
   /// Set user online status
   Future<void> setOnlineStatus({
     required String groupId,
-    required String odlI,
+    required String userId,
     required bool isOnline,
   }) async {
     try {
-      await _presenceRef(groupId, odlI).update({
+      await _presenceRef(groupId, userId).update({
         'isOnline': isOnline,
         'lastSeen': ServerValue.timestamp,
       });
@@ -232,21 +232,21 @@ class LocationSharingService {
   /// Setup disconnect handler (automatically set offline when disconnected)
   Future<void> setupDisconnectHandler({
     required String groupId,
-    required String odlI,
+    required String userId,
   }) async {
     try {
-      await _presenceRef(groupId, odlI).onDisconnect().update({
+      await _presenceRef(groupId, userId).onDisconnect().update({
         'isOnline': false,
         'lastSeen': ServerValue.timestamp,
       });
 
-      await _userLocationRef(groupId, odlI).onDisconnect().update({
+      await _userLocationRef(groupId, userId).onDisconnect().update({
         'isSharing': false,
         'timestamp': ServerValue.timestamp,
       });
 
       if (kDebugMode) {
-        print('LocationSharing: Disconnect handler setup for $odlI');
+        print('LocationSharing: Disconnect handler setup for $userId');
       }
     } catch (e) {
       if (kDebugMode) {

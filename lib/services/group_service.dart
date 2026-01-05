@@ -2,16 +2,22 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/group_model.dart';
 import '../models/user_model.dart';
+import '../models/location_sharing_schedule_model.dart';
 
 /// Group service interface
 abstract class GroupService {
-  Future<GroupModel> createGroup(UserModel driver, String groupName);
+  Future<GroupModel> createGroup(
+    UserModel driver,
+    String groupName, {
+    required LocationSharingScheduleModel schedule,
+  });
   Future<GroupModel?> getGroup(String groupId);
   Future<GroupModel?> getGroupByCode(String code);
   Future<void> joinGroup(String code, UserModel user);
   Future<void> leaveGroup(String groupId, String userId);
   Future<void> updateGroup(GroupModel group);
   Future<List<GroupModel>> getAllGroups();
+  Future<List<GroupModel>> getGroupsByDriver(String driverId);
   Future<void> deleteGroup(String groupId);
 }
 
@@ -20,7 +26,11 @@ class FirestoreGroupService implements GroupService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
-  Future<GroupModel> createGroup(UserModel driver, String groupName) async {
+  Future<GroupModel> createGroup(
+    UserModel driver,
+    String groupName, {
+    required LocationSharingScheduleModel schedule,
+  }) async {
     final groupDoc = _firestore.collection('groups').doc();
     final group = GroupModel(
       id: groupDoc.id,
@@ -31,6 +41,7 @@ class FirestoreGroupService implements GroupService {
       memberIds: [driver.id], // Driver is automatically a member
       createdAt: DateTime.now(),
       isActive: false,
+      sharingSchedule: schedule,
     );
 
     await groupDoc.set(group.toJson());
@@ -113,6 +124,23 @@ class FirestoreGroupService implements GroupService {
           .toList();
     } catch (e) {
       print('Error getting all groups: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<GroupModel>> getGroupsByDriver(String driverId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('groups')
+          .where('driverId', isEqualTo: driverId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      return querySnapshot.docs
+          .map((doc) => GroupModel.fromJson({...doc.data(), 'id': doc.id}))
+          .toList();
+    } catch (e) {
+      print('Error getting groups by driver: $e');
       return [];
     }
   }

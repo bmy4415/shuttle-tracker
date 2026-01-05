@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/location_data.dart';
 import '../models/parent_data.dart';
@@ -6,7 +7,7 @@ import '../models/parent_data.dart';
 class LocationService {
   static LocationService? _instance;
   LocationService._internal();
-  
+
   factory LocationService() {
     _instance ??= LocationService._internal();
     return _instance!;
@@ -14,6 +15,7 @@ class LocationService {
 
   StreamController<LocationData>? _locationController;
   StreamSubscription<Position>? _locationSubscription;
+  Timer? _simulationTimer;
   bool _isTracking = false;
 
   Stream<LocationData> get locationStream {
@@ -24,21 +26,46 @@ class LocationService {
   bool get isTracking => _isTracking;
 
   /// Check if location services are enabled and permissions are granted
+  /// With timeout for web platform
   Future<bool> checkLocationPermission() async {
+    try {
+      // Add timeout for web platform where permission check might hang
+      final result = await Future.any([
+        _doCheckPermission(),
+        Future.delayed(const Duration(seconds: 5), () => null),
+      ]);
+
+      if (result == null) {
+        if (kDebugMode) print('Location permission check timed out');
+        return false;
+      }
+      return result;
+    } catch (e) {
+      if (kDebugMode) print('Location permission check error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _doCheckPermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
+      if (kDebugMode) print('Location service not enabled');
       return false;
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
+    if (kDebugMode) print('Current permission: $permission');
+
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
+        if (kDebugMode) print('Location permission denied');
         return false;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
+      if (kDebugMode) print('Location permission denied forever');
       return false;
     }
 
@@ -200,41 +227,47 @@ class LocationService {
       return true;
     }
 
+    _locationController ??= StreamController<LocationData>.broadcast();
+
     try {
       bool hasPermission = await checkLocationPermission();
+
       if (!hasPermission) {
+        if (kDebugMode) print('No location permission');
         return false;
       }
 
-      _locationController ??= StreamController<LocationData>.broadcast();
-
       const LocationSettings locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.low, // 속도 최적화
-        distanceFilter: 20, // 20m 이동 시 업데이트 (배터리 최적화)
-        timeLimit: Duration(seconds: 30), // 30초로 증가
+        accuracy: LocationAccuracy.low,
+        distanceFilter: 20,
+        timeLimit: Duration(seconds: 30),
       );
 
       _locationSubscription = Geolocator.getPositionStream(
         locationSettings: locationSettings,
-      ).listen((Position position) {
-        final locationData = LocationData(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          accuracy: position.accuracy,
-          altitude: position.altitude,
-          speed: position.speed,
-          timestamp: DateTime.now(),
-          busId: busId,
-          driverId: driverId,
-        );
-
-        _locationController?.add(locationData);
-      });
+      ).listen(
+        (Position position) {
+          final locationData = LocationData(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            accuracy: position.accuracy,
+            altitude: position.altitude,
+            speed: position.speed,
+            timestamp: DateTime.now(),
+            busId: busId,
+            driverId: driverId,
+          );
+          _locationController?.add(locationData);
+        },
+        onError: (e) {
+          if (kDebugMode) print('Location stream error: $e');
+        },
+      );
 
       _isTracking = true;
       return true;
     } catch (e) {
-      print('Error starting location tracking: $e');
+      if (kDebugMode) print('Error starting location tracking: $e');
       return false;
     }
   }
@@ -243,6 +276,8 @@ class LocationService {
   void stopLocationTracking() {
     _locationSubscription?.cancel();
     _locationSubscription = null;
+    _simulationTimer?.cancel();
+    _simulationTimer = null;
     _isTracking = false;
   }
 
@@ -260,4 +295,7 @@ class LocationService {
     _locationController?.close();
     _locationController = null;
   }
+
+  /// Check if currently in simulation mode
+  bool get isSimulating => _simulationTimer != null;
 }

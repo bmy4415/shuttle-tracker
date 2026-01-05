@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../config/env_config.dart';
 import '../models/group_model.dart';
 import '../models/user_model.dart';
+import '../models/location_sharing_schedule_model.dart';
 
 /// Seed data service for local development
 /// Creates test data only in local environment
@@ -74,6 +75,7 @@ class SeedDataService {
         memberIds: [],
         createdAt: DateTime.now(),
         isActive: true,
+        sharingSchedule: LocationSharingScheduleModel.defaultSchedule(),
       );
 
       await groupDoc.set(testGroup.toJson());
