@@ -5,6 +5,20 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/group_service.dart';
 
+/// Custom text formatter to convert input to uppercase
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
+    );
+  }
+}
+
 /// Group setup screen (Create or Join)
 /// 기사: 그룹 생성
 /// 학부모/선생님: 그룹 참여
@@ -299,11 +313,17 @@ class _GroupSetupScreenState extends State<GroupSetupScreen> {
                         controller: _groupCodeController,
                         decoration: const InputDecoration(
                           labelText: '그룹 코드',
-                          hintText: '예: LION3A',
+                          hintText: '예: TEST01',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.vpn_key),
                         ),
                         textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [
+                          // Only allow alphanumeric
+                          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                          // Force uppercase
+                          UpperCaseTextFormatter(),
+                        ],
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return '그룹 코드를 입력하세요';

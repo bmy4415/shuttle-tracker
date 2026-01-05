@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../models/location_data.dart';
@@ -33,6 +34,11 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Web does not support Naver Maps - show placeholder
+    if (kIsWeb) {
+      return _buildWebPlaceholder();
+    }
+
     // Force update markers whenever parentLocations change
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -54,6 +60,98 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
         // 부모 위젯에 컨트롤러 전달
         widget.onMapControllerReady?.call(controller);
       },
+    );
+  }
+
+  /// Web placeholder for Naver Map (not supported on web)
+  Widget _buildWebPlaceholder() {
+    return Container(
+      color: Colors.grey.shade200,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.map_outlined,
+              size: 80,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '웹에서는 지도가 지원되지 않습니다',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '모바일 앱에서 지도를 확인하세요',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade500,
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Show location info if available
+            if (widget.busLocation != null || widget.currentUserLocation != null)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 32),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    if (widget.currentUserLocation != null) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.person_pin_circle, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Text(
+                            '내 위치: ${widget.currentUserLocation!.latitude.toStringAsFixed(4)}, ${widget.currentUserLocation!.longitude.toStringAsFixed(4)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (widget.busLocation != null) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.directions_bus, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            '셔틀 위치: ${widget.busLocation!.latitude.toStringAsFixed(4)}, ${widget.busLocation!.longitude.toStringAsFixed(4)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (widget.parentLocations.isNotEmpty) ...[
+                      const Divider(),
+                      Text(
+                        '학부모 ${widget.parentLocations.length}명 접속 중',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

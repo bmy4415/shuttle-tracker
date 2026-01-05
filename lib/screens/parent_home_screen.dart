@@ -187,6 +187,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   /// Move camera to my location
   Future<void> _moveToMyLocation() async {
+    // Skip on web - map not available
+    if (kIsWeb) return;
+
     if (_isMovingToMyLocation ||
         _myLocation == null ||
         _mapController == null) {
@@ -229,6 +232,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   /// Move camera to bus location
   Future<void> _moveToBusLocation() async {
+    // Skip on web - map not available
+    if (kIsWeb) return;
+
     if (_isMovingToBusLocation ||
         _busLocation == null ||
         _mapController == null) {
@@ -333,6 +339,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           title: const Text('학부모 화면'),
           backgroundColor: Colors.blue.shade100,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => context.push('/settings'),
+              tooltip: '설정',
+            ),
             IconButton(
               onPressed: _isLoadingLocation ? null : _loadBusLocation,
               icon: _isLoadingLocation

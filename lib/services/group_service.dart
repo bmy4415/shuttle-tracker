@@ -1,11 +1,9 @@
 import 'dart:math';
-import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/group_model.dart';
 import '../models/user_model.dart';
-import 'local_storage_service.dart';
 
 /// Group service interface
-/// Can be replaced with Firebase Firestore later
 abstract class GroupService {
   Future<GroupModel> createGroup(UserModel driver, String groupName);
   Future<GroupModel?> getGroup(String groupId);
@@ -17,18 +15,15 @@ abstract class GroupService {
   Future<void> deleteGroup(String groupId);
 }
 
-/// Local group service implementation
-class LocalGroupService implements GroupService {
-  static const String _groupsKey = 'groups';
-  final LocalStorageService _storage;
-
-  LocalGroupService(this._storage);
+/// Firestore group service implementation
+class FirestoreGroupService implements GroupService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   Future<GroupModel> createGroup(UserModel driver, String groupName) async {
-    const uuid = Uuid();
+    final groupDoc = _firestore.collection('groups').doc();
     final group = GroupModel(
-      id: uuid.v4(),
+      id: groupDoc.id,
       code: _generateGroupCode(),
       name: groupName,
       driverId: driver.id,
@@ -38,32 +33,38 @@ class LocalGroupService implements GroupService {
       isActive: false,
     );
 
-    // Save group
-    final groups = await getAllGroups();
-    groups.add(group);
-    await _saveAllGroups(groups);
-
+    await groupDoc.set(group.toJson());
+    print('Created group: ${group.id} (${group.code})');
     return group;
   }
 
   @override
   Future<GroupModel?> getGroup(String groupId) async {
-    final groups = await getAllGroups();
     try {
-      return groups.firstWhere((g) => g.id == groupId);
+      final doc = await _firestore.collection('groups').doc(groupId).get();
+      if (!doc.exists) return null;
+      return GroupModel.fromJson({...doc.data()!, 'id': doc.id});
     } catch (e) {
+      print('Error getting group: $e');
       return null;
     }
   }
 
   @override
   Future<GroupModel?> getGroupByCode(String code) async {
-    final groups = await getAllGroups();
     try {
-      return groups.firstWhere(
-        (g) => g.code.toUpperCase() == code.toUpperCase(),
-      );
+      final querySnapshot = await _firestore
+          .collection('groups')
+          .where('code', isEqualTo: code.toUpperCase())
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) return null;
+
+      final doc = querySnapshot.docs.first;
+      return GroupModel.fromJson({...doc.data(), 'id': doc.id});
     } catch (e) {
+      print('Error getting group by code: $e');
       return null;
     }
   }
@@ -81,63 +82,49 @@ class LocalGroupService implements GroupService {
     }
 
     // Add user to group
-    final updatedGroup = group.copyWith(
-      memberIds: [...group.memberIds, user.id],
-    );
+    await _firestore.collection('groups').doc(group.id).update({
+      'memberIds': FieldValue.arrayUnion([user.id]),
+    });
 
-    await updateGroup(updatedGroup);
+    print('User ${user.id} joined group ${group.id}');
   }
 
   @override
   Future<void> leaveGroup(String groupId, String userId) async {
-    final group = await getGroup(groupId);
-    if (group == null) {
-      throw Exception('그룹을 찾을 수 없습니다.');
-    }
+    await _firestore.collection('groups').doc(groupId).update({
+      'memberIds': FieldValue.arrayRemove([userId]),
+    });
 
-    // Remove user from group
-    final updatedMemberIds = group.memberIds.where((id) => id != userId).toList();
-    final updatedGroup = group.copyWith(memberIds: updatedMemberIds);
-
-    await updateGroup(updatedGroup);
+    print('User $userId left group $groupId');
   }
 
   @override
   Future<void> updateGroup(GroupModel group) async {
-    final groups = await getAllGroups();
-    final index = groups.indexWhere((g) => g.id == group.id);
-
-    if (index == -1) {
-      throw Exception('그룹을 찾을 수 없습니다.');
-    }
-
-    groups[index] = group;
-    await _saveAllGroups(groups);
+    await _firestore.collection('groups').doc(group.id).update(group.toJson());
+    print('Updated group: ${group.id}');
   }
 
   @override
   Future<List<GroupModel>> getAllGroups() async {
-    final jsonList = _storage.getJsonList(_groupsKey);
-    if (jsonList == null) return [];
-
-    return jsonList.map((json) => GroupModel.fromJson(json)).toList();
+    try {
+      final querySnapshot = await _firestore.collection('groups').get();
+      return querySnapshot.docs
+          .map((doc) => GroupModel.fromJson({...doc.data(), 'id': doc.id}))
+          .toList();
+    } catch (e) {
+      print('Error getting all groups: $e');
+      return [];
+    }
   }
 
   @override
   Future<void> deleteGroup(String groupId) async {
-    final groups = await getAllGroups();
-    final updatedGroups = groups.where((g) => g.id != groupId).toList();
-    await _saveAllGroups(updatedGroups);
-  }
-
-  /// Save all groups to storage
-  Future<void> _saveAllGroups(List<GroupModel> groups) async {
-    final jsonList = groups.map((g) => g.toJson()).toList();
-    await _storage.saveJsonList(_groupsKey, jsonList);
+    await _firestore.collection('groups').doc(groupId).delete();
+    print('Deleted group: $groupId');
   }
 
   /// Generate random group code (6 characters)
-  /// Format: WORD-NN (예: "LION-3A")
+  /// Format: WORDNC (예: "LION3A")
   String _generateGroupCode() {
     final words = [
       'LION', 'BEAR', 'WOLF', 'DEER', 'HAWK',
@@ -158,10 +145,7 @@ class GroupServiceFactory {
   static GroupService? _instance;
 
   static Future<GroupService> getInstance() async {
-    if (_instance == null) {
-      final storage = await LocalStorageService.getInstance();
-      _instance = LocalGroupService(storage);
-    }
+    _instance ??= FirestoreGroupService();
     return _instance!;
   }
 }

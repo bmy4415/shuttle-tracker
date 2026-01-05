@@ -4,6 +4,7 @@ import '../screens/role_selector_screen.dart';
 import '../screens/parent_home_screen.dart';
 import '../screens/driver_home_screen.dart';
 import '../screens/group_setup_screen.dart';
+import '../screens/settings_screen.dart';
 import '../models/user_model.dart';
 import '../models/group_model.dart';
 
@@ -52,6 +53,13 @@ final appRouter = GoRouter(
           group: params['group'] as GroupModel?,
         );
       },
+    ),
+
+    // Settings screen
+    GoRoute(
+      path: '/settings',
+      name: 'settings',
+      builder: (context, state) => const SettingsScreen(),
     ),
   ],
 );

@@ -1,53 +1,91 @@
 import 'dart:math';
-import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
-import 'local_storage_service.dart';
 
 /// Authentication service interface
-/// Can be replaced with Firebase Auth later
 abstract class AuthService {
   Future<UserModel?> getCurrentUser();
   Future<UserModel> createUser(UserRole role, {String? nickname});
   Future<void> updateUser(UserModel user);
   Future<void> logout();
+  Future<void> resetAccount();
 }
 
-/// Local authentication service implementation
-class LocalAuthService implements AuthService {
-  static const String _currentUserKey = 'current_user';
-  final LocalStorageService _storage;
-
-  LocalAuthService(this._storage);
+/// Firebase authentication service implementation
+class FirebaseAuthService implements AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   Future<UserModel?> getCurrentUser() async {
-    final json = _storage.getJson(_currentUserKey);
-    if (json == null) return null;
-    return UserModel.fromJson(json);
+    // Get Firebase Auth user
+    final authUser = _auth.currentUser;
+    if (authUser == null) {
+      // Sign in anonymously if not authenticated
+      await _auth.signInAnonymously();
+      return null; // First time user, needs to select role
+    }
+
+    try {
+      final doc = await _firestore.collection('users').doc(authUser.uid).get();
+      if (!doc.exists) return null; // User exists in Auth but not in Firestore
+      return UserModel.fromJson({...doc.data()!, 'id': doc.id});
+    } catch (e) {
+      print('Error getting current user: $e');
+      return null;
+    }
   }
 
   @override
   Future<UserModel> createUser(UserRole role, {String? nickname}) async {
-    const uuid = Uuid();
+    // Ensure user is authenticated
+    User? authUser = _auth.currentUser;
+    if (authUser == null) {
+      final credential = await _auth.signInAnonymously();
+      authUser = credential.user!;
+    }
+
     final user = UserModel(
-      id: uuid.v4(),
+      id: authUser.uid,
       nickname: nickname ?? _generateRandomNickname(),
       role: role,
       createdAt: DateTime.now(),
     );
 
-    await _storage.saveJson(_currentUserKey, user.toJson());
+    await _firestore.collection('users').doc(authUser.uid).set(user.toJson());
+
+    print('Created user: ${user.id} (${user.nickname}) - Role: ${user.role}');
     return user;
   }
 
   @override
   Future<void> updateUser(UserModel user) async {
-    await _storage.saveJson(_currentUserKey, user.toJson());
+    await _firestore.collection('users').doc(user.id).update(user.toJson());
+    print('Updated user: ${user.id}');
   }
 
   @override
   Future<void> logout() async {
-    await _storage.remove(_currentUserKey);
+    await _auth.signOut();
+    print('Logged out');
+  }
+
+  @override
+  Future<void> resetAccount() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      // Delete user data from Firestore
+      await _firestore.collection('users').doc(currentUser.uid).delete();
+
+      // Delete Firebase Auth user
+      await currentUser.delete();
+
+      // Sign in anonymously to create new user
+      await _auth.signInAnonymously();
+
+      print('Account reset completed');
+    }
   }
 
   /// Generate random nickname (Korean style)
@@ -77,10 +115,7 @@ class AuthServiceFactory {
   static AuthService? _instance;
 
   static Future<AuthService> getInstance() async {
-    if (_instance == null) {
-      final storage = await LocalStorageService.getInstance();
-      _instance = LocalAuthService(storage);
-    }
+    _instance ??= FirebaseAuthService();
     return _instance!;
   }
 }

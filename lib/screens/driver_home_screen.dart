@@ -156,6 +156,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   /// Move camera to parent location
   Future<void> _moveToParent(ParentData parent) async {
+    // Skip on web - map not available
+    if (kIsWeb) return;
+
     if (_isMovingToParent || _mapController == null) {
       return;
     }
@@ -206,6 +209,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   /// Move camera to my (driver) location
   Future<void> _moveToMyLocation() async {
+    // Skip on web - map not available
+    if (kIsWeb) return;
+
     if (_isMovingToMyLocation ||
         _currentLocation == null ||
         _mapController == null) {
@@ -275,6 +281,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           backgroundColor: Colors.green.shade100,
           centerTitle: true,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => context.push('/settings'),
+              tooltip: '설정',
+            ),
             if (widget.group != null)
               IconButton(
                 icon: const Icon(Icons.info_outline),
