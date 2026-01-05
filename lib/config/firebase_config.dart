@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'env_config.dart';
 
@@ -78,6 +79,7 @@ class FirebaseConfig {
           appId: '1:123456789:android:abc123',
           messagingSenderId: '123456789',
           projectId: 'shuttle-tracker-local',
+          databaseURL: 'http://localhost:9000?ns=shuttle-tracker-local',
         );
 
       case AppEnvironment.dev:
@@ -111,10 +113,14 @@ class FirebaseConfig {
     // Connect to Auth emulator
     await FirebaseAuth.instance.useAuthEmulator(host, EnvConfig.authPort);
 
+    // Connect to Realtime Database emulator
+    FirebaseDatabase.instance.useDatabaseEmulator(host, EnvConfig.realtimeDbPort);
+
     if (kDebugMode) {
       print('🔥 Connected to Firebase Emulators');
       print('   - Firestore: $host:${EnvConfig.firestorePort}');
       print('   - Auth: $host:${EnvConfig.authPort}');
+      print('   - Realtime DB: $host:${EnvConfig.realtimeDbPort}');
       print('   - UI: http://localhost:${EnvConfig.emulatorUiPort}');
     }
   }

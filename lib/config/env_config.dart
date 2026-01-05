@@ -39,5 +39,6 @@ class EnvConfig {
   /// Firebase Emulator ports
   static int get firestorePort => 8080;
   static int get authPort => 9099;
+  static int get realtimeDbPort => 9000;
   static int get emulatorUiPort => 4000;
 }
