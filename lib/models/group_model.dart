@@ -1,3 +1,5 @@
+import 'location_sharing_schedule_model.dart';
+
 /// Group model for shuttle bus tracking
 class GroupModel {
   final String id;
@@ -8,6 +10,8 @@ class GroupModel {
   final List<String> memberIds; // 참여한 멤버 ID 목록
   final DateTime createdAt;
   final bool isActive; // 운행 중 여부
+  final LocationSharingScheduleModel? sharingSchedule; // 위치 공유 시간 설정
+  final bool isSharingActive; // 위치 공유 활성화 여부 (수동 제어)
 
   GroupModel({
     required this.id,
@@ -18,6 +22,8 @@ class GroupModel {
     required this.memberIds,
     required this.createdAt,
     this.isActive = false,
+    this.sharingSchedule,
+    this.isSharingActive = true,
   });
 
   /// Create from JSON
@@ -31,6 +37,11 @@ class GroupModel {
       memberIds: (json['memberIds'] as List<dynamic>).cast<String>(),
       createdAt: DateTime.parse(json['createdAt'] as String),
       isActive: json['isActive'] as bool? ?? false,
+      sharingSchedule: json['sharingSchedule'] != null
+          ? LocationSharingScheduleModel.fromRealtimeDbJson(
+              json['sharingSchedule'] as Map<dynamic, dynamic>)
+          : null,
+      isSharingActive: json['isSharingActive'] as bool? ?? true,
     );
   }
 
@@ -45,6 +56,8 @@ class GroupModel {
       'memberIds': memberIds,
       'createdAt': createdAt.toIso8601String(),
       'isActive': isActive,
+      'sharingSchedule': sharingSchedule?.toRealtimeDbJson(),
+      'isSharingActive': isSharingActive,
     };
   }
 
@@ -58,6 +71,8 @@ class GroupModel {
     List<String>? memberIds,
     DateTime? createdAt,
     bool? isActive,
+    LocationSharingScheduleModel? sharingSchedule,
+    bool? isSharingActive,
   }) {
     return GroupModel(
       id: id ?? this.id,
@@ -68,9 +83,18 @@ class GroupModel {
       memberIds: memberIds ?? this.memberIds,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
+      sharingSchedule: sharingSchedule ?? this.sharingSchedule,
+      isSharingActive: isSharingActive ?? this.isSharingActive,
     );
   }
 
   /// Get member count
   int get memberCount => memberIds.length;
+
+  /// Check if location sharing should be active now
+  bool get shouldShareLocation {
+    if (!isSharingActive) return false;
+    if (sharingSchedule == null) return true; // No schedule = always share
+    return sharingSchedule!.isWithinSchedule();
+  }
 }
