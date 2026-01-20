@@ -42,6 +42,7 @@ class LocationSharingService {
   // ============== Location Sharing ==============
 
   /// Start sharing location (set isSharing = true)
+  /// Note: Does NOT overwrite existing isBoardingToday value for parents
   Future<void> startSharing({
     required String groupId,
     required String userId,
@@ -49,21 +50,44 @@ class LocationSharingService {
     required UserRole role,
   }) async {
     try {
-      await _userLocationRef(groupId, userId).update({
+      // Base update data
+      final updateData = <String, dynamic>{
         'isSharing': true,
         'displayName': displayName,
         'role': role.toString(),
         'timestamp': ServerValue.timestamp,
-      });
+      };
 
-      // Update presence
-      await _presenceRef(groupId, userId).update({
+      // For parents, only set isBoardingToday if it doesn't exist
+      if (role == UserRole.parent) {
+        final snapshot =
+            await _userLocationRef(groupId, userId).child('isBoardingToday').get();
+        if (!snapshot.exists) {
+          updateData['isBoardingToday'] = true;
+        }
+      }
+
+      await _userLocationRef(groupId, userId).update(updateData);
+
+      // Base presence update data
+      final presenceData = <String, dynamic>{
         'isOnline': true,
         'isSharing': true,
         'displayName': displayName,
         'role': role.toString(),
         'lastSeen': ServerValue.timestamp,
-      });
+      };
+
+      // For parents, only set isBoardingToday in presence if it doesn't exist
+      if (role == UserRole.parent) {
+        final presenceSnapshot =
+            await _presenceRef(groupId, userId).child('isBoardingToday').get();
+        if (!presenceSnapshot.exists) {
+          presenceData['isBoardingToday'] = true;
+        }
+      }
+
+      await _presenceRef(groupId, userId).update(presenceData);
 
       if (kDebugMode) {
         print('LocationSharing: Started sharing for $userId in group $groupId');
@@ -142,6 +166,142 @@ class LocationSharingService {
       }
       rethrow;
     }
+  }
+
+  // ============== Boarding Status ==============
+
+  /// Check and reset boarding status if date has changed
+  /// Called on app start to ensure daily reset
+  Future<void> checkAndResetBoardingStatus({
+    required String groupId,
+    required String userId,
+  }) async {
+    try {
+      final snapshot = await _userLocationRef(groupId, userId).get();
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+
+      if (snapshot.exists && snapshot.value != null) {
+        final data = snapshot.value as Map<dynamic, dynamic>;
+        final lastDate = data['lastBoardingDate'] as String?;
+
+        if (lastDate != today) {
+          // Date has changed, reset to true
+          await _userLocationRef(groupId, userId).update({
+            'isBoardingToday': true,
+            'lastBoardingDate': today,
+          });
+
+          // Also update presence
+          await _presenceRef(groupId, userId).update({
+            'isBoardingToday': true,
+            'lastBoardingDate': today,
+          });
+
+          if (kDebugMode) {
+            print('LocationSharing: Reset boarding status for $userId (date changed from $lastDate to $today)');
+          }
+        }
+      } else {
+        // No existing data, initialize with default values
+        await _userLocationRef(groupId, userId).update({
+          'isBoardingToday': true,
+          'lastBoardingDate': today,
+        });
+
+        await _presenceRef(groupId, userId).update({
+          'isBoardingToday': true,
+          'lastBoardingDate': today,
+        });
+
+        if (kDebugMode) {
+          print('LocationSharing: Initialized boarding status for $userId');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('LocationSharing: Error checking/resetting boarding status: $e');
+      }
+    }
+  }
+
+  /// Get current boarding status from Firebase
+  Future<bool> getBoardingStatus({
+    required String groupId,
+    required String userId,
+  }) async {
+    try {
+      final snapshot =
+          await _userLocationRef(groupId, userId).child('isBoardingToday').get();
+      if (snapshot.exists && snapshot.value != null) {
+        return snapshot.value as bool;
+      }
+      return true; // Default to true if not set
+    } catch (e) {
+      if (kDebugMode) {
+        print('LocationSharing: Error getting boarding status: $e');
+      }
+      return true; // Default to true on error
+    }
+  }
+
+  /// Update boarding status (for parents)
+  Future<void> updateBoardingStatus({
+    required String groupId,
+    required String userId,
+    required bool isBoardingToday,
+  }) async {
+    try {
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+
+      await _userLocationRef(groupId, userId).update({
+        'isBoardingToday': isBoardingToday,
+        'lastBoardingDate': today,
+        'timestamp': ServerValue.timestamp,
+      });
+
+      // Also update presence
+      await _presenceRef(groupId, userId).update({
+        'isBoardingToday': isBoardingToday,
+        'lastBoardingDate': today,
+        'lastSeen': ServerValue.timestamp,
+      });
+
+      if (kDebugMode) {
+        print('LocationSharing: Updated boarding status for $userId: $isBoardingToday');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('LocationSharing: Error updating boarding status: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// Watch all parents' boarding status (for driver)
+  Stream<Map<String, bool>> watchBoardingStatus({
+    required String groupId,
+  }) {
+    return _locationsRef(groupId).onValue.map((event) {
+      final data = event.snapshot.value;
+      if (data == null) return <String, bool>{};
+
+      final locationsMap = data as Map<dynamic, dynamic>;
+      final boardingStatus = <String, bool>{};
+
+      for (final entry in locationsMap.entries) {
+        final locationData = entry.value as Map<dynamic, dynamic>;
+        final role = locationData['role'] as String?;
+
+        // Only include parents
+        if (role == 'UserRole.parent') {
+          final userId = entry.key as String;
+          final isBoardingToday = locationData['isBoardingToday'] as bool? ?? true;
+          boardingStatus[userId] = isBoardingToday;
+        }
+      }
+
+      return boardingStatus;
+    });
   }
 
   // ============== Location Watching ==============

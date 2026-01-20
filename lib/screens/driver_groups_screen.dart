@@ -30,8 +30,13 @@ class _DriverGroupsScreenState extends State<DriverGroupsScreen> {
   }
 
   Future<void> _initializeServices() async {
-    _authService = await AuthServiceFactory.getInstance();
-    _groupService = await GroupServiceFactory.getInstance();
+    // Parallelize service initialization for faster loading
+    final results = await Future.wait([
+      AuthServiceFactory.getInstance(),
+      GroupServiceFactory.getInstance(),
+    ]);
+    _authService = results[0] as AuthService;
+    _groupService = results[1] as GroupService;
     _currentUser = await _authService!.getCurrentUser();
     await _loadGroups();
   }
@@ -109,10 +114,6 @@ class _DriverGroupsScreenState extends State<DriverGroupsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadGroups,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => context.go('/'),
           ),
         ],
       ),

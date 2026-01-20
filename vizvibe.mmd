@@ -1,0 +1,249 @@
+flowchart TD
+    %% === PROJECT GOALS ===
+    %% Ultimate Goal: Enable parents and shuttle bus drivers to track each other's locations in real-time
+    %% Current Goal: Complete boarding management UI and prepare for deployment
+    %% @lastActive: screen_ux_improvements
+
+    %% === START ===
+    %% @project_start [start, closed]
+    project_start("Shuttle Tracker Project Start<br/><sub>Flutter-based cross-platform app<br/>for parents and shuttle bus drivers<br/>to track locations in real-time<br/>PWA first, then native app</sub>")
+
+    %% @ultimate_goal [end, opened]
+    ultimate_goal("Production-Ready App<br/><sub>Complete shuttle tracking system<br/>with group management, real-time<br/>location sharing, boarding status,<br/>and push notifications</sub>")
+
+    %% === PHASE 1: CORE FEATURES (COMPLETED) ===
+    %% @initial_setup [ai-task, closed]
+    initial_setup("Initial Flutter Setup<br/><sub>Project creation with role-based<br/>screens: RoleSelectorScreen,<br/>ParentHomeScreen, DriverHomeScreen<br/>Basic UI and navigation</sub>")
+
+    %% @location_tracking [ai-task, closed]
+    location_tracking("Location Tracking System<br/><sub>Geolocator package integration<br/>LocationData model with JSON<br/>serialization, LocationService<br/>singleton with GPS streams</sub>")
+
+    %% @naver_maps [ai-task, closed]
+    naver_maps("Naver Maps Integration<br/><sub>flutter_naver_map v1.4.1+1<br/>Multi-user markers with colors<br/>Real-time position updates<br/>Camera control and navigation</sub>")
+
+    %% @performance_opt [ai-task, closed]
+    performance_opt("Performance Optimization<br/><sub>Battery optimization (15m filter)<br/>Marker update debounce (500ms)<br/>Memory leak prevention<br/>Stream subscription cleanup</sub>")
+
+    %% @driver_ui_v2 [ai-task, closed]
+    driver_ui_v2("Driver Screen Enhancement<br/><sub>Map-centric main view with<br/>clickable parent sidebar<br/>Parent location simulator<br/>Interactive map navigation</sub>")
+
+    %% @hot_reload [ai-task, closed]
+    hot_reload("Hot Reload & Marker Sync<br/><sub>Timestamp popup confirmation<br/>NaverMapWidget optimization<br/>PostFrameCallback for updates<br/>Realtime marker synchronization</sub>")
+
+    %% @local_data_system [ai-task, closed]
+    local_data_system("Local Data Management<br/><sub>SharedPreferences storage<br/>User auth with random nicknames<br/>Group creation/join (6-digit code)<br/>Attendance status management</sub>")
+
+    %% @go_router [ai-task, closed]
+    go_router("GoRouter Navigation<br/><sub>Declarative routing setup<br/>Screen file restructuring<br/>Deep linking support ready<br/>Cleaner navigation flow</sub>")
+
+    %% @custom_markers [ai-task, closed]
+    custom_markers("Custom Pin Markers<br/><sub>Custom marker implementation<br/>Real-time location simulation<br/>Visual distinction for roles<br/>Improved map UX</sub>")
+
+    %% === PHASE 2: FIREBASE BACKEND (COMPLETED) ===
+    %% @firebase_emulator [ai-task, closed]
+    firebase_emulator("Firebase Emulator Setup<br/><sub>Local development environment<br/>Emulator connectivity configured<br/>Testing without production costs<br/>Development workflow improved</sub>")
+
+    %% @location_models [ai-task, closed]
+    location_models("Location Sharing Models<br/><sub>Data models for real-time<br/>location sharing between<br/>drivers and parents via<br/>Firebase Realtime Database</sub>")
+
+    %% @realtime_location_service [ai-task, closed]
+    realtime_location_service("Real-time Location Service<br/><sub>Firebase Realtime DB integration<br/>Location sharing between users<br/>Stream-based position updates<br/>Group-based location filtering</sub>")
+
+    %% @firebase_realtime_db [ai-task, closed]
+    firebase_realtime_db("Firebase Realtime DB Config<br/><sub>Database rules and structure<br/>Location data persistence<br/>Real-time sync configuration<br/>Driver UX improvements</sub>")
+
+    %% === PHASE 3: BOARDING MANAGEMENT (COMPLETED) ===
+    %% @boarding_list_ui [ai-task, closed]
+    boarding_list_ui("Student List UI<br/><sub>Driver student list screen with<br/>status badges and action buttons<br/>Boarding/drop-off workflow<br/>Dimmed view for not-riding</sub>")
+
+    %% @parent_boarding_ui [ai-task, closed]
+    parent_boarding_ui("Parent Boarding UI<br/><sub>Animated status card with<br/>gradient backgrounds and icons<br/>Confirmation dialog flow<br/>Easy toggle between states</sub>")
+
+    %% @boarding_ui_complete [ai-task, closed]
+    boarding_ui_complete("Boarding UI Complete<br/><sub>Tests written and passing (20)<br/>Router integration complete<br/>Debug popup code removed<br/>Ready for integration testing</sub>")
+
+    %% @navigation_integration [ai-task, closed]
+    navigation_integration("Navigation Integration<br/><sub>ParentHomeScreen: 탑승 설정 버튼<br/>DriverHomeScreen: 학생 목록 버튼<br/>All 30 tests passing<br/>App flow complete</sub>")
+
+    %% === PHASE 4: FIREBASE FIX (COMPLETED) ===
+    %% @firebase_api_key_fix [ai-task, closed]
+    firebase_api_key_fix("Firebase API Key Fix<br/><sub>Fixed api-key-not-valid error<br/>for Web emulator authentication<br/>Using valid 39-char API key format<br/>AIzaSy... prefix required</sub>")
+
+    %% @multi_app_script_fix [ai-task, closed]
+    multi_app_script_fix("Multi-App Script Fix<br/><sub>Added background mode for<br/>Claude Code environment<br/>15s delay between launches<br/>to avoid shader conflicts</sub>")
+
+    %% === PHASE 5: PARENT UX IMPROVEMENTS (COMPLETED) ===
+    %% @parent_groups_screen [ai-task, closed]
+    parent_groups_screen("Parent Groups Screen<br/><sub>ParentGroupsScreen added<br/>Similar to DriverGroupsScreen<br/>Shows joined groups list<br/>Accessible after app restart</sub>")
+
+    %% @parent_boarding_toggle [ai-task, closed]
+    parent_boarding_toggle("Parent Boarding Toggle<br/><sub>Inline toggle in ParentHomeScreen<br/>오늘 탑승 (green) / 미탑승 (gray)<br/>Confirmation dialog for 미탑승<br/>No separate screen needed</sub>")
+
+    %% === PHASE 6: E2E TESTING (COMPLETED) ===
+    %% @playwright_e2e_poc [ai-task, closed]
+    playwright_e2e_poc("Playwright E2E POC<br/><sub>Multi-user integration tests<br/>5 tests passing in 52.7s<br/>Multiple browser contexts<br/>Verifies /multi-app workflow</sub>")
+
+    %% @multi_app_clean_state [ai-task, closed]
+    multi_app_clean_state("Multi-App Clean State<br/><sub>/multi-app now clears all cache<br/>Chrome profiles + Firebase data<br/>Isolated profiles per port<br/>No more API key race condition</sub>")
+
+    %% @boarding_sync_realtime [ai-task, closed]
+    boarding_sync_realtime("Boarding Status Real-time Sync<br/><sub>isBoardingToday in SharedLocationModel<br/>Firebase Realtime DB integration<br/>Parent→Driver status sync<br/>50 tests passing</sub>")
+
+    %% === PHASE 7: PERFORMANCE OPTIMIZATION (COMPLETED) ===
+    %% @loading_perf_optimization [ai-task, closed]
+    loading_perf_optimization("Loading Performance Optimization<br/><sub>Removed SeedDataService blocking calls<br/>Removed testConnection 10s timeout<br/>Parallel service initialization<br/>Fixed boarding status default sync</sub>")
+
+    %% === PHASE 8: BUILD OPTIMIZATION (COMPLETED) ===
+    %% @multi_app_script_opt [ai-task, closed]
+    multi_app_script_opt("Multi-App Script Optimization<br/><sub>Smart build: skip if no changes<br/>Firebase reuse if already running<br/>html renderer for faster compile<br/>220s → 3s (98% faster)</sub>")
+
+    %% === PHASE 9: SCREEN UX IMPROVEMENTS (COMPLETED) ===
+    %% @screen_ux_improvements [ai-task, closed]
+    screen_ux_improvements("Screen UX Improvements<br/><sub>Parent: back button + exit room<br/>Role selector: auto-redirect<br/>Driver groups: remove logout btn<br/>Flutter 3.35 build script fix</sub>")
+
+    %% === FUTURE WORK: NOTIFICATIONS ===
+    %% @fcm_setup [ai-task, opened]
+    fcm_setup("Firebase Cloud Messaging<br/><sub>FCM configuration and setup<br/>Push notification integration<br/>Background message handling<br/>Permission request flow</sub>")
+
+    %% @arrival_notifications [ai-task, opened]
+    arrival_notifications("Arrival Notifications<br/><sub>Estimated arrival alerts<br/>Proximity-based triggers<br/>Customizable alert radius<br/>Sound and vibration options</sub>")
+
+    %% === FUTURE WORK: DEPLOYMENT ===
+    %% @android_internal [ai-task, opened]
+    android_internal("Android Internal Testing<br/><sub>Google Play Console setup ($25)<br/>AAB build and upload<br/>Internal testing track<br/>Up to 100 testers</sub>")
+
+    %% @ios_testflight [ai-task, opened]
+    ios_testflight("iOS TestFlight<br/><sub>Apple Developer Program ($99/yr)<br/>Xcode build configuration<br/>TestFlight beta distribution<br/>Up to 10,000 testers</sub>")
+
+    %% === CONNECTIONS ===
+    project_start --> initial_setup
+    initial_setup --> location_tracking
+    location_tracking --> naver_maps
+    naver_maps --> performance_opt
+    naver_maps --> driver_ui_v2
+    performance_opt --> hot_reload
+    driver_ui_v2 --> hot_reload
+    hot_reload --> local_data_system
+    local_data_system --> go_router
+    go_router --> custom_markers
+    custom_markers --> firebase_emulator
+    firebase_emulator --> location_models
+    location_models --> realtime_location_service
+    realtime_location_service --> firebase_realtime_db
+
+    %% Boarding management
+    firebase_realtime_db --> boarding_list_ui
+    firebase_realtime_db --> parent_boarding_ui
+    boarding_list_ui --> boarding_ui_complete
+    parent_boarding_ui --> boarding_ui_complete
+
+    %% Navigation integration
+    boarding_ui_complete --> navigation_integration
+
+    %% Firebase fix and script improvements
+    navigation_integration --> firebase_api_key_fix
+    firebase_api_key_fix --> multi_app_script_fix
+
+    %% Parent UX improvements
+    multi_app_script_fix --> parent_groups_screen
+    parent_groups_screen --> parent_boarding_toggle
+
+    %% E2E Testing
+    parent_boarding_toggle --> playwright_e2e_poc
+
+    %% Multi-app clean state improvement
+    playwright_e2e_poc --> multi_app_clean_state
+
+    %% Boarding status real-time sync
+    multi_app_clean_state --> boarding_sync_realtime
+
+    %% Loading performance optimization
+    boarding_sync_realtime --> loading_perf_optimization
+
+    %% Future work branches
+    loading_perf_optimization --> multi_app_script_opt
+    multi_app_script_opt --> screen_ux_improvements
+    screen_ux_improvements --> fcm_setup
+    fcm_setup --> arrival_notifications
+
+    %% Deployment branches
+    navigation_integration --> android_internal
+    android_internal --> ios_testflight
+
+    %% Ultimate goal connections
+    arrival_notifications -.-> ultimate_goal
+    ios_testflight -.-> ultimate_goal
+
+    %% === RECENT WORK HIGHLIGHT ===
+    subgraph recent [RECENT]
+        screen_ux_improvements
+    end
+
+    %% === STYLES ===
+    %% Start node (teal)
+    style project_start fill:#1a1a2e,stroke:#2dd4bf,color:#5eead4,stroke-width:2px
+
+    %% Ultimate Goal (muted)
+    style ultimate_goal fill:#1a1a2e,stroke:#6b7280,color:#9ca3af,stroke-width:1px
+
+    %% Closed tasks (soft purple - like GitHub merged)
+    style initial_setup fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style location_tracking fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style naver_maps fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style performance_opt fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style driver_ui_v2 fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style hot_reload fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style local_data_system fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style go_router fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style custom_markers fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style firebase_emulator fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style location_models fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style realtime_location_service fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style firebase_realtime_db fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style boarding_list_ui fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+    style parent_boarding_ui fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Completed boarding UI
+    style boarding_ui_complete fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Navigation integration (closed)
+    style navigation_integration fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Firebase API key fix (closed)
+    style firebase_api_key_fix fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Multi-app script fix (closed)
+    style multi_app_script_fix fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Parent groups screen (closed)
+    style parent_groups_screen fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Parent boarding toggle (closed)
+    style parent_boarding_toggle fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Playwright E2E POC (closed)
+    style playwright_e2e_poc fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Multi-app clean state (closed)
+    style multi_app_clean_state fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Boarding sync realtime (now closed, not last active)
+    style boarding_sync_realtime fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Loading perf optimization (now closed, not last active)
+    style loading_perf_optimization fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Multi-app script optimization (now closed, not last active)
+    style multi_app_script_opt fill:#1a1a2e,stroke:#a78bfa,color:#c4b5fd,stroke-width:1px
+
+    %% Last active node (highlighted purple)
+    style screen_ux_improvements fill:#2d1f4e,stroke:#c084fc,color:#e9d5ff,stroke-width:2px
+
+    %% Recent subgraph style
+    style recent fill:transparent,stroke:#c084fc,color:#c084fc,stroke-width:2px,stroke-dasharray:5 5
+
+    %% Open tasks (soft green - like GitHub open)
+    style fcm_setup fill:#1a1a2e,stroke:#4ade80,color:#86efac,stroke-width:1px
+    style arrival_notifications fill:#1a1a2e,stroke:#4ade80,color:#86efac,stroke-width:1px
+    style android_internal fill:#1a1a2e,stroke:#4ade80,color:#86efac,stroke-width:1px
+    style ios_testflight fill:#1a1a2e,stroke:#4ade80,color:#86efac,stroke-width:1px

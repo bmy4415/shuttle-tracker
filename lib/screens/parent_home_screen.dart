@@ -29,6 +29,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   LocationData? _myLocation;
   bool _isLoadingLocation = false;
   bool _isSharing = true; // 위치 공유 상태
+  bool _isBoardingToday = true; // 오늘 탑승 여부 (기본: 탑승)
 
   // Services
   final LocationService _locationService = LocationService();
@@ -53,7 +54,33 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   void initState() {
     super.initState();
     _sharingService = LocationSharingService.getInstance();
-    _startLocationSharing();
+    _initializeServices();
+  }
+
+  /// Initialize services in the correct order
+  Future<void> _initializeServices() async {
+    if (widget.group == null) return;
+
+    final groupId = widget.group!.id;
+    final userId = widget.user.id;
+
+    // 1. Check and reset boarding status if date changed (midnight reset)
+    await _sharingService.checkAndResetBoardingStatus(
+      groupId: groupId,
+      userId: userId,
+    );
+
+    // 2. Load current boarding status from Firebase
+    final currentStatus = await _sharingService.getBoardingStatus(
+      groupId: groupId,
+      userId: userId,
+    );
+    if (mounted) {
+      setState(() => _isBoardingToday = currentStatus);
+    }
+
+    // 3. Start location sharing (does not overwrite isBoardingToday)
+    await _startLocationSharing();
   }
 
   @override
@@ -102,7 +129,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             driverId: widget.group!.driverId,
           )
           .listen((driverLocation) {
-        if (mounted && driverLocation != null && driverLocation.isSharing) {
+        if (!mounted) return;
+
+        if (driverLocation != null && driverLocation.isSharing) {
+          // Driver is sharing - show bus location
           setState(() {
             _busLocation = LocationData(
               latitude: driverLocation.latitude,
@@ -112,6 +142,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               busId: 'driver',
               driverId: driverLocation.userId,
             );
+          });
+        } else {
+          // Driver stopped sharing or no data - remove bus location
+          setState(() {
+            _busLocation = null;
           });
         }
       });
@@ -152,6 +187,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               accuracy: myLocation.accuracy,
               timestamp: DateTime.now().millisecondsSinceEpoch,
               isSharing: true,
+              isBoardingToday: _isBoardingToday,
             ),
           );
         }
@@ -165,6 +201,19 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           _isLoadingLocation = false;
         });
       }
+    }
+  }
+
+  /// Exit room - stop sharing and navigate to groups screen
+  Future<void> _exitRoom() async {
+    if (widget.group != null) {
+      await _sharingService.stopSharing(
+        groupId: widget.group!.id,
+        userId: widget.user.id,
+      );
+    }
+    if (mounted) {
+      context.go('/parent-groups');
     }
   }
 
@@ -205,6 +254,87 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     } catch (e) {
       if (kDebugMode) {
         print('Error toggling sharing: $e');
+      }
+    }
+  }
+
+  /// Toggle boarding status
+  Future<void> _toggleBoarding() async {
+    if (widget.group == null) return;
+
+    if (_isBoardingToday) {
+      // Changing to "미탑승" requires confirmation
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('탑승 취소 확인'),
+          content: const Text('오늘 탑승하지 않으시겠습니까?\n기사님에게 미탑승으로 표시됩니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('미탑승으로 변경'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true && mounted) {
+        try {
+          // Update Firebase
+          await _sharingService.updateBoardingStatus(
+            groupId: widget.group!.id,
+            userId: widget.user.id,
+            isBoardingToday: false,
+          );
+          setState(() {
+            _isBoardingToday = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('오늘 미탑승으로 설정되었습니다')),
+          );
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error updating boarding status: $e');
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('상태 변경 실패: $e')),
+          );
+        }
+      }
+    } else {
+      // Changing back to "탑승" doesn't require confirmation
+      try {
+        // Update Firebase
+        await _sharingService.updateBoardingStatus(
+          groupId: widget.group!.id,
+          userId: widget.user.id,
+          isBoardingToday: true,
+        );
+        setState(() {
+          _isBoardingToday = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('오늘 탑승으로 설정되었습니다')),
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error updating boarding status: $e');
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('상태 변경 실패: $e')),
+          );
+        }
       }
     }
   }
@@ -401,6 +531,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _exitRoom,
+          tooltip: '나가기',
+        ),
         title: const Text('학부모 화면'),
         backgroundColor: Colors.blue.shade100,
         actions: [
@@ -567,19 +702,44 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Stop/Start sharing button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _toggleSharing,
-                      icon: Icon(_isSharing ? Icons.stop : Icons.play_arrow),
-                      label: Text(_isSharing ? '공유 중지' : '공유 시작'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isSharing ? Colors.red.shade700 : Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                  // Boarding toggle and sharing button row
+                  Row(
+                    children: [
+                      // Boarding toggle button
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _toggleBoarding,
+                          icon: Icon(
+                            _isBoardingToday ? Icons.check_circle : Icons.cancel,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _isBoardingToday ? '오늘 탑승' : '오늘 미탑승',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isBoardingToday ? Colors.green : Colors.grey,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      // Stop/Start sharing button
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _toggleSharing,
+                          icon: Icon(_isSharing ? Icons.stop : Icons.play_arrow, size: 16),
+                          label: Text(
+                            _isSharing ? '공유 중지' : '공유 시작',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isSharing ? Colors.red.shade700 : Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

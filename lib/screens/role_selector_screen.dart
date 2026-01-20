@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
-import '../services/seed_data_service.dart';
-import '../config/env_config.dart';
 
 /// Role selector screen - Initial screen for selecting user role
 class RoleSelectorScreen extends StatefulWidget {
@@ -14,56 +12,39 @@ class RoleSelectorScreen extends StatefulWidget {
 }
 
 class _RoleSelectorScreenState extends State<RoleSelectorScreen> {
-  bool _isLoading = false;
+  bool _isLoading = true; // Start with loading to check existing user
 
   @override
   void initState() {
     super.initState();
-    // TODO: 배포시 삭제 - 개발용 앱 시작시간 팝업
-    _showStartupTimestamp();
+    _checkExistingUser();
   }
 
-  @override
-  void didUpdateWidget(RoleSelectorScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // TODO: 배포시 삭제 - Hot Reload 시에도 타임스탬프 팝업
-    _showStartupTimestamp();
-  }
+  /// Check if user already exists and redirect to appropriate screen
+  Future<void> _checkExistingUser() async {
+    try {
+      final authService = await AuthServiceFactory.getInstance();
+      final existingUser = await authService.getCurrentUser();
 
-  // TODO: 배포시 삭제 - 개발용 Hot Restart 확인 팝업
-  void _showStartupTimestamp() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final startTime = DateTime.now();
-      showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('✅ Hot Reload 성공!'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('앱 시작시간:'),
-                const SizedBox(height: 8),
-                Text(
-                  startTime.toString().substring(0, 19),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('확인'),
-              ),
-            ],
-          );
-        },
-      );
-    });
+      if (!mounted) return;
+
+      if (existingUser != null) {
+        // User already has a role, redirect to groups screen
+        if (existingUser.role == UserRole.driver) {
+          context.go('/driver-groups');
+        } else {
+          context.go('/parent-groups');
+        }
+      } else {
+        // No existing user, show role selector
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      // Error checking user, show role selector anyway
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _selectRole(UserRole role) async {
@@ -103,8 +84,8 @@ class _RoleSelectorScreenState extends State<RoleSelectorScreen> {
         // Driver goes to groups list
         context.go('/driver-groups');
       } else {
-        // Parent goes to group setup
-        context.push('/group-setup', extra: user);
+        // Parent goes to groups list (like driver)
+        context.go('/parent-groups');
       }
       setState(() => _isLoading = false);
     } catch (e) {
@@ -124,75 +105,32 @@ class _RoleSelectorScreenState extends State<RoleSelectorScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('셔틀 트래커'), centerTitle: true),
-      body: Column(
-        children: [
-          // Test info banner (local only)
-          if (EnvConfig.isLocal)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              color: Colors.amber.shade100,
-              child: Column(
-                children: [
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.science, size: 16, color: Colors.orange),
-                      SizedBox(width: 8),
-                      Text(
-                        '로컬 개발 환경',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '테스트 그룹 코드: ${SeedDataService.testGroupCode}',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Text(
-                    '학부모로 로그인 후 위 코드로 참여하세요',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.directions_bus, size: 100, color: Colors.blue),
+            const SizedBox(height: 40),
+            const Text(
+              '사용자 유형을 선택하세요',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.directions_bus, size: 100, color: Colors.blue),
-                  const SizedBox(height: 40),
-                  const Text(
-                    '사용자 유형을 선택하세요',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 40),
-                  ElevatedButton.icon(
-                    onPressed: () => _selectRole(UserRole.parent),
-                    icon: const Icon(Icons.person),
-                    label: const Text('학부모'),
-                    style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    onPressed: () => _selectRole(UserRole.driver),
-                    icon: const Icon(Icons.drive_eta),
-                    label: const Text('기사'),
-                    style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: () => _selectRole(UserRole.parent),
+              icon: const Icon(Icons.person),
+              label: const Text('학부모'),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
             ),
-          ),
-        ],
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => _selectRole(UserRole.driver),
+              icon: const Icon(Icons.drive_eta),
+              label: const Text('기사'),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
+            ),
+          ],
+        ),
       ),
     );
   }

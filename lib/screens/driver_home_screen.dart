@@ -262,12 +262,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   /// Stop tracking
   Future<void> _stopTracking() async {
-    _locationService.stopLocationTracking();
-    _locationSubscription?.cancel();
-    _locationSubscription = null;
-    _membersLocationSubscription?.cancel();
-    _membersLocationSubscription = null;
+    // 1. Set local sharing flag to false first (prevents race condition)
+    setState(() {
+      _isSharing = false;
+    });
 
+    // 2. Update Firebase to notify parents BEFORE canceling subscriptions
     if (_group != null) {
       await _sharingService.stopSharing(
         groupId: _group!.id,
@@ -275,9 +275,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       );
     }
 
+    // 3. Now stop location tracking and cancel subscriptions
+    _locationService.stopLocationTracking();
+    _locationSubscription?.cancel();
+    _locationSubscription = null;
+    _membersLocationSubscription?.cancel();
+    _membersLocationSubscription = null;
+
+    // 4. Update remaining state
     setState(() {
       _isTracking = false;
-      _isSharing = false;
       _statusMessage = '운행 중지됨';
       _parentLocations = [];
       _allMemberLocations = [];
@@ -285,47 +292,46 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     });
   }
 
-  /// Toggle tracking
-  Future<void> _toggleTracking() async {
-    if (_isTracking) {
-      await _stopTracking();
-    } else {
-      await _startTracking();
-    }
-  }
-
-  /// Toggle sharing (while tracking)
-  Future<void> _toggleSharing() async {
-    if (_group == null) return;
-
-    try {
-      if (_isSharing) {
-        await _sharingService.stopSharing(
-          groupId: _group!.id,
-          userId: widget.user.id,
-        );
-        setState(() => _isSharing = false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('위치 공유가 중지되었습니다')),
-          );
-        }
-      } else {
-        await _sharingService.startSharing(
-          groupId: _group!.id,
-          userId: widget.user.id,
-          displayName: widget.user.nickname,
-          role: widget.user.role,
-        );
-        setState(() => _isSharing = true);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('위치 공유가 시작되었습니다')),
-          );
-        }
+  /// Exit room - with confirmation dialog only when tracking
+  Future<void> _exitRoom() async {
+    // If not tracking, just navigate back without confirmation
+    if (!_isTracking) {
+      if (mounted) {
+        context.go('/driver-groups');
       }
-    } catch (e) {
-      if (kDebugMode) print('Error toggling sharing: $e');
+      return;
+    }
+
+    // If tracking, show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('운행 종료'),
+        content: const Text('운행을 종료하시겠습니까?\n위치 공유가 중지됩니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('종료'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      // Stop tracking (includes stopSharing - no duplicate call needed)
+      await _stopTracking();
+      // Navigate to groups screen
+      if (mounted) {
+        context.go('/driver-groups');
+      }
     }
   }
 
@@ -557,7 +563,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/driver-groups'),
+          onPressed: _exitRoom,
+          tooltip: '운행 종료',
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -715,7 +722,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ],
                       ),
                     ),
-                    // List - shows ALL members with dimmed for non-sharing
+                    // List - shows ALL members with dimmed for non-boarding
                     Flexible(
                       child: ListView.builder(
                         shrinkWrap: true,
@@ -723,16 +730,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         itemBuilder: (context, index) {
                           final member = _allMemberLocations[index];
                           final isSharing = member.isSharing && member.isRecent;
+                          final isBoardingToday = member.isBoardingToday;
                           final isSelected = _selectedParentId == member.userId;
 
                           return Material(
                             color: isSelected
                                 ? Colors.green.shade100
-                                : (isSharing ? Colors.transparent : Colors.grey.shade100),
+                                : (isBoardingToday ? Colors.transparent : Colors.grey.shade200),
                             child: InkWell(
                               onTap: isSharing ? () => _moveToParent(member) : null,
                               child: Opacity(
-                                opacity: isSharing ? 1.0 : 0.5,
+                                opacity: isBoardingToday ? 1.0 : 0.4,
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
@@ -741,14 +749,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                   child: Row(
                                     children: [
                                       Icon(
-                                        isSharing
-                                            ? Icons.person_pin_circle
-                                            : Icons.person_off,
+                                        !isBoardingToday
+                                            ? Icons.not_interested
+                                            : (isSharing
+                                                ? Icons.person_pin_circle
+                                                : Icons.person_off),
                                         color: isSelected
                                             ? Colors.green.shade700
-                                            : (isSharing
-                                                ? Colors.blue.shade600
-                                                : Colors.grey.shade500),
+                                            : (!isBoardingToday
+                                                ? Colors.grey.shade400
+                                                : (isSharing
+                                                    ? Colors.blue.shade600
+                                                    : Colors.grey.shade500)),
                                         size: 18,
                                       ),
                                       const SizedBox(width: 8),
@@ -763,19 +775,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                 fontWeight: isSelected
                                                     ? FontWeight.bold
                                                     : FontWeight.normal,
-                                                color: isSharing
+                                                color: isBoardingToday
                                                     ? Colors.black87
-                                                    : Colors.grey.shade600,
+                                                    : Colors.grey.shade500,
                                               ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             Text(
-                                              isSharing ? '공유 중' : '공유 중지됨',
+                                              !isBoardingToday
+                                                  ? '오늘 미탑승'
+                                                  : (isSharing ? '공유 중' : '공유 중지됨'),
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: isSharing
-                                                    ? Colors.green.shade600
-                                                    : Colors.grey.shade500,
+                                                color: !isBoardingToday
+                                                    ? Colors.orange.shade600
+                                                    : (isSharing
+                                                        ? Colors.green.shade600
+                                                        : Colors.grey.shade500),
                                               ),
                                             ),
                                           ],
@@ -834,36 +850,34 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     ),
                   ),
 
-                // Start/Stop tracking button
-                ElevatedButton.icon(
-                  onPressed: _isLoadingGroup
-                      ? null
-                      : () {
-                          print('[DriverHome] Button pressed! _group: ${_group?.name ?? "null"}, _isTracking: $_isTracking');
-                          if (_group == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(_statusMessage ?? '그룹 정보가 없습니다'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            return;
-                          }
-                          _toggleTracking();
-                        },
-                  icon: Icon(_isTracking ? Icons.stop : Icons.play_arrow),
-                  label: Text(_isLoadingGroup
-                      ? '로딩 중...'
-                      : (_isTracking ? '운행 종료' : '운행 시작')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isLoadingGroup
-                        ? Colors.grey
-                        : (_isTracking ? Colors.red : Colors.green),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(200, 50),
-                    elevation: 8,
+                // Start tracking button - only show when NOT tracking
+                // (when tracking, use back button to stop and exit)
+                if (!_isTracking)
+                  ElevatedButton.icon(
+                    onPressed: _isLoadingGroup
+                        ? null
+                        : () {
+                            print('[DriverHome] Button pressed! _group: ${_group?.name ?? "null"}, _isTracking: $_isTracking');
+                            if (_group == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(_statusMessage ?? '그룹 정보가 없습니다'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              return;
+                            }
+                            _startTracking();
+                          },
+                    icon: const Icon(Icons.play_arrow),
+                    label: Text(_isLoadingGroup ? '로딩 중...' : '운행 시작'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isLoadingGroup ? Colors.grey : Colors.green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(200, 50),
+                      elevation: 8,
+                    ),
                   ),
-                ),
               ],
             ),
           ),

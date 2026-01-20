@@ -18,6 +18,7 @@ abstract class GroupService {
   Future<void> updateGroup(GroupModel group);
   Future<List<GroupModel>> getAllGroups();
   Future<List<GroupModel>> getGroupsByDriver(String driverId);
+  Future<List<GroupModel>> getGroupsByMember(String userId);
   Future<void> deleteGroup(String groupId);
 }
 
@@ -141,6 +142,23 @@ class FirestoreGroupService implements GroupService {
           .toList();
     } catch (e) {
       print('Error getting groups by driver: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<GroupModel>> getGroupsByMember(String userId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('groups')
+          .where('memberIds', arrayContains: userId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      return querySnapshot.docs
+          .map((doc) => GroupModel.fromJson({...doc.data(), 'id': doc.id}))
+          .toList();
+    } catch (e) {
+      print('Error getting groups by member: $e');
       return [];
     }
   }

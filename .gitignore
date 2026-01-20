@@ -52,3 +52,14 @@ todos.md
 # Environment variables
 .env
 .env.*
+
+# Claude Code
+.claude/plans/
+.claude/hooks/*-vizvibe.js
+.claude/hooks/VIZVIBE.md
+.claude/hooks/state.json
+
+# E2E tests
+e2e-tests/node_modules/
+e2e-tests/test-results/
+e2e-tests/playwright-report/

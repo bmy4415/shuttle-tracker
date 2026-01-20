@@ -41,6 +41,8 @@ flutter run -d macos         # macOS 앱 실행
 flutter run -d chrome        # 웹 브라우저 실행 (디버깅용만)
 flutter test                 # 테스트 실행
 
+# 멀티 앱 테스트 → /multi-app 스킬 사용 (직접 flutter run 금지)
+
 # 중요: 기본적으로 모바일 앱(Android/iOS)으로 실행하기
 # 웹 브라우저는 지도 API 제한으로 인해 사용하지 않음
 
@@ -103,6 +105,18 @@ flutter pub get             # 의존성 설치
 - **Language**: Dart 3.9.0
 - **Package Manager**: pub
 - **Version Control**: Git
+
+## Claude Skills
+
+스크립트화된 고정 작업은 Skills를 통해 실행합니다. `.claude/commands/` 폴더에 정의됨.
+
+| Skill | Description |
+|-------|-------------|
+| `/multi-app` | 4개의 앱 인스턴스 실행 (1 기사 + 3 학부모) |
+
+**중요**: 멀티 앱 실행 시 반드시 `/multi-app` 스킬을 사용하세요.
+- `flutter run` 직접 여러 개 실행 금지 (셰이더 컴파일 충돌 발생)
+- 사전 조건: `firebase emulators:start --project=demo-shuttle-tracker` 실행 필요
 
 ## 프로젝트 문서
 

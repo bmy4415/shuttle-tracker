@@ -78,13 +78,15 @@ class FirebaseConfig {
     switch (EnvConfig.current) {
       case AppEnvironment.local:
         // Demo project for emulator
-        // Using 'demo-' prefix tells Firebase to skip API key validation
+        // API key must be in valid Firebase format (AIzaSy... 39 chars)
+        // The demo- prefix project allows any valid-format API key
+        // databaseURL uses standard format: projectId-default-rtdb
         return const FirebaseOptions(
-          apiKey: 'fake-api-key-for-emulator',
+          apiKey: 'AIzaSyDemoKeyForLocalEmulatorTesting123',
           appId: '1:123456789:web:abc123def456',
           messagingSenderId: '123456789',
           projectId: 'demo-shuttle-tracker',
-          databaseURL: 'http://localhost:9000?ns=demo-shuttle-tracker',
+          databaseURL: 'http://localhost:9000?ns=demo-shuttle-tracker-default-rtdb',
         );
 
       case AppEnvironment.dev:

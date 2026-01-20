@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../screens/role_selector_screen.dart';
 import '../screens/parent_home_screen.dart';
+import '../screens/parent_boarding_screen.dart';
+import '../screens/parent_groups_screen.dart';
 import '../screens/driver_home_screen.dart';
 import '../screens/driver_groups_screen.dart';
+import '../screens/driver_student_list_screen.dart';
 import '../screens/group_setup_screen.dart';
 import '../screens/settings_screen.dart';
 import '../models/user_model.dart';
 import '../models/group_model.dart';
+import '../models/attendance_model.dart';
 
 /// App router configuration using go_router
 final appRouter = GoRouter(
@@ -27,6 +31,15 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final user = state.extra as UserModel;
         return GroupSetupScreen(user: user);
+      },
+    ),
+
+    // Parent groups list screen
+    GoRoute(
+      path: '/parent-groups',
+      name: 'parent-groups',
+      builder: (context, state) {
+        return const ParentGroupsScreen();
       },
     ),
 
@@ -114,6 +127,33 @@ final appRouter = GoRouter(
       path: '/settings',
       name: 'settings',
       builder: (context, state) => const SettingsScreen(),
+    ),
+
+    // Parent boarding screen
+    GoRoute(
+      path: '/parent-boarding',
+      name: 'parent-boarding',
+      builder: (context, state) {
+        final Map<String, dynamic> params = state.extra as Map<String, dynamic>;
+        return ParentBoardingScreen(
+          user: params['user'] as UserModel,
+          group: params['group'] as GroupModel?,
+        );
+      },
+    ),
+
+    // Driver student list screen
+    GoRoute(
+      path: '/driver-students',
+      name: 'driver-students',
+      builder: (context, state) {
+        final Map<String, dynamic> params = state.extra as Map<String, dynamic>;
+        return DriverStudentListScreen(
+          driver: params['driver'] as UserModel,
+          group: params['group'] as GroupModel,
+          attendances: params['attendances'] as List<AttendanceModel>? ?? [],
+        );
+      },
     ),
   ],
 );

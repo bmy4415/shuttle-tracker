@@ -12,6 +12,7 @@ class SharedLocationModel {
   final double? accuracy;
   final int timestamp; // Unix timestamp in milliseconds
   final bool isSharing;
+  final bool isBoardingToday; // 오늘 탑승 여부 (학부모용)
 
   SharedLocationModel({
     required this.userId,
@@ -23,6 +24,7 @@ class SharedLocationModel {
     this.accuracy,
     required this.timestamp,
     this.isSharing = true,
+    this.isBoardingToday = true, // 기본값: 탑승
   });
 
   /// Create from Firebase Realtime DB JSON
@@ -44,6 +46,7 @@ class SharedLocationModel {
       accuracy: (json['accuracy'] as num?)?.toDouble(),
       timestamp: json['timestamp'] as int? ?? 0,
       isSharing: json['isSharing'] as bool? ?? true,
+      isBoardingToday: json['isBoardingToday'] as bool? ?? true,
     );
   }
 
@@ -57,6 +60,7 @@ class SharedLocationModel {
       'accuracy': accuracy,
       'timestamp': timestamp,
       'isSharing': isSharing,
+      'isBoardingToday': isBoardingToday,
     };
   }
 
@@ -71,6 +75,7 @@ class SharedLocationModel {
     double? accuracy,
     int? timestamp,
     bool? isSharing,
+    bool? isBoardingToday,
   }) {
     return SharedLocationModel(
       userId: userId ?? this.userId,
@@ -82,6 +87,7 @@ class SharedLocationModel {
       accuracy: accuracy ?? this.accuracy,
       timestamp: timestamp ?? this.timestamp,
       isSharing: isSharing ?? this.isSharing,
+      isBoardingToday: isBoardingToday ?? this.isBoardingToday,
     );
   }
 
@@ -98,6 +104,7 @@ class SharedLocationModel {
   @override
   String toString() {
     return 'SharedLocationModel(userId: $userId, displayName: $displayName, '
-        'lat: $latitude, lng: $longitude, isSharing: $isSharing)';
+        'lat: $latitude, lng: $longitude, isSharing: $isSharing, '
+        'isBoardingToday: $isBoardingToday)';
   }
 }
