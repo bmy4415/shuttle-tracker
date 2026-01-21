@@ -546,6 +546,15 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               onPressed: _showGroupInfoDialog,
               tooltip: '그룹 정보',
             ),
+          // Feedback button
+          IconButton(
+            icon: const Icon(Icons.chat),
+            onPressed: () => context.push('/feedback', extra: {
+              'user': widget.user,
+              'groupId': widget.group?.id,
+            }),
+            tooltip: '피드백',
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => context.push('/settings'),

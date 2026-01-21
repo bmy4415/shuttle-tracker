@@ -9,6 +9,7 @@ import '../screens/driver_groups_screen.dart';
 import '../screens/driver_student_list_screen.dart';
 import '../screens/group_setup_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/feedback_list_screen.dart';
 import '../models/user_model.dart';
 import '../models/group_model.dart';
 import '../models/attendance_model.dart';
@@ -152,6 +153,19 @@ final appRouter = GoRouter(
           driver: params['driver'] as UserModel,
           group: params['group'] as GroupModel,
           attendances: params['attendances'] as List<AttendanceModel>? ?? [],
+        );
+      },
+    ),
+
+    // Feedback list screen
+    GoRoute(
+      path: '/feedback',
+      name: 'feedback',
+      builder: (context, state) {
+        final Map<String, dynamic> params = state.extra as Map<String, dynamic>;
+        return FeedbackListScreen(
+          user: params['user'] as UserModel,
+          groupId: params['groupId'] as String?,
         );
       },
     ),

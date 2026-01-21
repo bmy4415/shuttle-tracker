@@ -580,6 +580,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         backgroundColor: Colors.green.shade100,
         centerTitle: true,
         actions: [
+          // Feedback button
+          IconButton(
+            icon: const Icon(Icons.chat),
+            onPressed: () => context.push('/feedback', extra: {
+              'user': widget.user,
+              'groupId': _group?.id,
+            }),
+            tooltip: '피드백',
+          ),
           // Group settings button
           if (_group != null)
             IconButton(
